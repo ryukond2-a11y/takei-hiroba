@@ -47,12 +47,24 @@ ws.onmessage = (msg) => {
         draw();
     }
 };
+document.addEventListener("click", e => {
+    const x = Math.floor(e.clientX / 20);
+    const y = Math.floor(e.clientY / 20);
 
+    my.x = x;
+    my.y = y;
+
+    ws.send(JSON.stringify({
+        type: "move",
+        x: my.x,
+        y: my.y
+    }));
+});
 document.addEventListener("keydown", e => {
-    if (e.key === "w") my.y--;
-    if (e.key === "s") my.y++;
-    if (e.key === "a") my.x--;
-    if (e.key === "d") my.x++;
+   if (e.key === "w" || e.key === "ArrowUp") my.y--;
+if (e.key === "s" || e.key === "ArrowDown") my.y++;
+if (e.key === "a" || e.key === "ArrowLeft") my.x--;
+if (e.key === "d" || e.key === "ArrowRight") my.x++;
 
     ws.send(JSON.stringify({
         type: "move",
