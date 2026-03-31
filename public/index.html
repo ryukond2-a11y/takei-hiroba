@@ -23,7 +23,7 @@ body { margin:0; overflow:hidden; background:#222; }
 
 <script>
 const ws = new WebSocket(location.origin.replace("http","ws"));
-
+let smoothPlayers = {};
 let myId;
 let players = {};
 let my = { x: 5, y: 5 };
@@ -44,9 +44,43 @@ ws.onmessage = (msg) => {
 
     if (data.type === "update") {
         players = data.players;
-        draw();
     }
 };
+function draw() {
+    document.body.innerHTML = "";
+
+    for (let id in players) {
+        const p = players[id];
+
+        // 初期化（まだなければ）
+        if (!smoothPlayers[id]) {
+            smoothPlayers[id] = { x: p.x, y: p.y };
+        }
+
+        // 🔥 なめらか補間（ここが超重要）
+        smoothPlayers[id].x += (p.x - smoothPlayers[id].x) * 0.3;
+        smoothPlayers[id].y += (p.y - smoothPlayers[id].y) * 0.3;
+
+        const screenX = smoothPlayers[id].x * 20;
+        const screenY = smoothPlayers[id].y * 20;
+
+        // ■ プレイヤー（四角）
+        const el = document.createElement("div");
+        el.className = "player";
+        el.style.left = screenX + "px";
+        el.style.top = screenY + "px";
+
+        // ■ 名前
+        const nameEl = document.createElement("div");
+        nameEl.className = "name";
+        nameEl.innerText = p.name;
+        nameEl.style.left = screenX + "px";
+        nameEl.style.top = (screenY - 15) + "px";
+
+        document.body.appendChild(el);
+        document.body.appendChild(nameEl);
+    }
+}
 document.addEventListener("click", e => {
     const x = Math.floor(e.clientX / 20);
     const y = Math.floor(e.clientY / 20);
@@ -73,9 +107,6 @@ if (e.key === "d" || e.key === "ArrowRight") my.x++;
     }));
 });
 
-function draw() {
-    document.body.innerHTML = "";
-
     for (let id in players) {
         const p = players[id];
 
@@ -94,6 +125,7 @@ function draw() {
         document.body.appendChild(nameEl);
     }
 }
+  setInterval(draw, 16);
 </script>
 
 </body>
