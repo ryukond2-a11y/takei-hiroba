@@ -14,10 +14,10 @@ wss.on("connection", (ws) => {
     const id = Math.random().toString(36).substr(2, 9);
 
     players[id] = {
-        x: 5,
-        y: 5,
-        name: "名無し"
-    };
+    x: Math.floor(Math.random() * 20),
+    y: Math.floor(Math.random() * 20),
+    name: "名無し"
+};
 
     ws.send(JSON.stringify({ type: "init", id, players }));
 
