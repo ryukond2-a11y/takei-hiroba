@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>たけい広場 - 鬼ごっこ完全版</title>
     <style>
+        /* 中央のお知らせ表示 */
+#announcer {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 48px; font-weight: bold; color: #ff4d4d;
+    text-shadow: 0 0 20px #000; z-index: 1000; pointer-events: none;
+    display: none;
+}
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; touch-action: none; color: white; }
         canvas { display: block; }
         #setup-screen {
@@ -32,17 +39,10 @@
             background: #ff4d4d; color: white; border: none; border-radius: 5px;
             font-weight: bold; display: none; z-index: 20; pointer-events: auto;
         }
-        /* 中央のお知らせ表示 */
-#announcer {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 48px; font-weight: bold; color: #ff4d4d;
-    text-shadow: 0 0 20px #000; z-index: 1000; pointer-events: none;
-    display: none;
-}
     </style>
 </head>
 <body>
-
+<div id="announcer"></div>
 <div id="setup-screen">
     <h2>アバターを作成して広場へ</h2>
     <input type="text" id="user-name" placeholder="なまえ" style="padding: 10px; width: 200px; margin-bottom: 10px;">
@@ -56,7 +56,7 @@
     </div>
     <button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
 </div>
-<div id="announcer"></div>
+
 <canvas id="gameCanvas"></canvas>
 <div id="ui">
     <div id="status"></div><br>
@@ -106,37 +106,13 @@ function updateEditor() {
     const pixels = document.querySelectorAll(".pixel");
     myAvatar.forEach((color, i) => { if(pixels[i]) pixels[i].style.background = color; });
 }
-// --- scriptの中：135行目あたりにあるはず ---
-
-// --- 初期設定・アバターエディタ ---
 const editor = document.getElementById("pixel-editor");
 for (let i = 0; i < 64; i++) {
     const div = document.createElement("div");
     div.className = "pixel";
-    div.onclick = () => { 
-        div.style.background = currentColor; 
-        myAvatar[i] = currentColor; 
-    };
+    div.onclick = () => { div.style.background = currentColor; myAvatar[i] = currentColor; };
     editor.appendChild(div);
 }
-
-// 新しく追加：色を変える関数
-function changeColor(color) {
-    currentColor = color;
-    document.getElementById("color-picker").value = color;
-}
-
-window.onload = () => {
-    const saved = localStorage.getItem("neda_lab_user");
-    if (saved) {
-        const data = JSON.parse(saved);
-        document.getElementById("user-name").value = data.name;
-        myAvatar = data.avatar;
-        // 保存されたドット絵を表示に反映
-        const pixels = document.querySelectorAll(".pixel");
-        myAvatar.forEach((color, i) => { if(pixels[i]) pixels[i].style.background = color; });
-    }
-};
 
 function joinGame() {
     const name = document.getElementById("user-name").value.trim();
@@ -166,7 +142,14 @@ window.addEventListener("touchmove", (e) => {
     }
 }, { passive: false });
 
-
+window.addEventListener("click", (e) => {
+    if (!isJoined) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - canvas.width/2) / scale + myPos.x;
+    const my = (e.clientY - rect.top - canvas.height/2) / scale + myPos.y;
+    if (mx > 1480 && mx < 1510 && my > 700 && my < 800) { playWarpSound(); myPos.x = 5100; myPos.y = 5750; }
+    if (mx > 5000 && mx < 5030 && my > 5700 && my < 5800) { playWarpSound(); myPos.x = 750; myPos.y = 750; }
+});
 
 // --- 通信 ---
 socket.on("update_all", (data) => { players = data; updateScoreBoard(); });
@@ -221,42 +204,6 @@ function updateScoreBoard() {
 function loop() {
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
-    if (!isFrozen) {
-        let nx = myPos.x + velocity.x, ny = myPos.y + velocity.y;
-        if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
-        if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
-
-        // ★自動ワープ判定
-        if (nx > 1470 && nx < 1510 && ny > 700 && ny < 800) { playWarpSound(); myPos.x = 5100; myPos.y = 5750; return; }
-        if (nx > 4990 && nx < 5030 && ny > 5700 && ny < 5800) { playWarpSound(); myPos.x = 750; myPos.y = 750; return; }
-
-        if (nx > 30 && nx < 6500) {
-            if ((nx < 1500 && ny > 0 && ny < 1500) || (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500)) {
-                myPos.x = nx; myPos.y = ny;
-            }
-        }
-        socket.emit("move", { x: myPos.x, y: myPos.y });
-    }
-
-    ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(scale, scale); ctx.translate(-myPos.x, -myPos.y);
-
-    const drawFloor = (x, y, color) => {
-        ctx.fillStyle = color; ctx.fillRect(x, y, 1500, 1500);
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        for(let i=0; i<=1500; i+=50) { for(let j=0; j<=1500; j+=25) { ctx.strokeRect(x+i+(j%50==0?0:25), y+j, 50, 25); } }
-    };
-    drawFloor(0, 0, "#3e6b3e");      // 広場は緑
-    drawFloor(5000, 5000, "#000000"); // ★鬼フロアは黒！
-    
-    // (このあとのプレイヤー描画などはそのままでOK)
-
-    ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100); 
-    ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100); 
-
-    // --- (以下のプレイヤー描画などはそのまま) ---
-
     if (!isFrozen) {
         let nx = myPos.x + velocity.x, ny = myPos.y + velocity.y;
         if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
