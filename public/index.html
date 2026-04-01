@@ -2,46 +2,47 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>たけい広場</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
-        canvas { display: block; background: #333; } /* 広場の地面の色 */
-        #ui { position: fixed; top: 10px; left: 10px; color: white; pointer-events: none; }
-        #joystick-container {
-            position: fixed; bottom: 50px; left: 50px;
-            width: 120px; height: 120px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 50%; display: none; /* スマホ時のみ表示 */
+        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; touch-action: none; }
+        canvas { display: block; background: #333; }
+        #ui { position: fixed; top: 10px; left: 10px; color: white; pointer-events: none; text-shadow: 1px 1px 2px black; }
+        
+        /* ジョイスティックの外枠 */
+        #joy-base {
+            position: fixed; bottom: 40px; left: 40px;
+            width: 100px; height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%; display: none; /* スマホのみ表示 */
         }
-        #joystick-stick {
-            position: absolute; width: 50px; height: 50px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 50%; top: 35px; left: 35px;
+        /* ジョイスティックの動く部分 */
+        #joy-stick {
+            position: absolute; width: 40px; height: 40px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%; top: 30px; left: 30px;
         }
     </style>
 </head>
 <body>
 
 <canvas id="gameCanvas"></canvas>
-
-<div id="ui">
-    <div id="status">接続中...</div>
-</div>
-
-<div id="joystick-container">
-    <div id="joystick-stick"></div>
-</div>
+<div id="ui"><div id="status">接続中...</div></div>
+<div id="joy-base"><div id="joy-stick"></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const joyBase = document.getElementById("joy-base");
+const joyStick = document.getElementById("joy-stick");
 
 let myId = null;
 let players = {};
-let myPos = { x: 400, y: 300, vx: 0, vy: 0 };
+let myPos = { x: 200, y: 200 };
+let velocity = { x: 0, y: 0 };
 const speed = 4;
 
 // 画面サイズ設定
@@ -52,72 +53,100 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// 入室（本来はここで名前やドット絵を要求）
-const myName = prompt("広場での名前を入力してください") || "匿名";
-socket.emit("join", { name: myName, avatar: null });
-
-socket.on("connect", () => {
-    myId = socket.id;
-    document.getElementById("status").innerText = `広場: ${myName}`;
-});
+const myName = prompt("名前を入力してね") || "匿名";
+socket.emit("join", { name: myName });
 
 socket.on("update_all", (data) => { players = data; });
 socket.on("player_moved", (p) => { players[p.id] = p; });
 socket.on("player_left", (id) => { delete players[id]; });
 
-// キーボード操作
+// --- 操作処理 ---
 const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// メインループ（ここで滑らかに描画）
+// スマホ用ジョイスティック処理
+if ("ontouchstart" in window) {
+    joyBase.style.display = "block";
+    let activeTouch = null;
+
+    joyBase.addEventListener("touchstart", (e) => {
+        activeTouch = e.touches[0].identifier;
+    });
+
+    window.addEventListener("touchmove", (e) => {
+        let touch = Array.from(e.touches).find(t => t.identifier === activeTouch);
+        if (!touch) return;
+
+        const rect = joyBase.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        const distance = Math.min(50, Math.sqrt(dx*dx + dy*dy));
+        const angle = Math.atan2(dy, dx);
+
+        // スティックの表示更新
+        const moveX = Math.cos(angle) * distance;
+        const moveY = Math.sin(angle) * distance;
+        joyStick.style.transform = `translate(${moveX}px, ${moveY}px)`;
+
+        // 移動速度に変換
+        velocity.x = (moveX / 50) * speed;
+        velocity.y = (moveY / 50) * speed;
+    }, { passive: false });
+
+    window.addEventListener("touchend", (e) => {
+        joyStick.style.transform = `translate(0px, 0px)`;
+        velocity = { x: 0, y: 0 };
+        activeTouch = null;
+    });
+}
+
+// メインループ
 function loop() {
-    // 自分の移動計算
     let moved = false;
+
+    // キーボード移動
     if (keys["ArrowUp"] || keys["w"]) { myPos.y -= speed; moved = true; }
     if (keys["ArrowDown"] || keys["s"]) { myPos.y += speed; moved = true; }
     if (keys["ArrowLeft"] || keys["a"]) { myPos.x -= speed; moved = true; }
     if (keys["ArrowRight"] || keys["d"]) { myPos.x += speed; moved = true; }
 
+    // ジョイスティック移動
+    if (velocity.x !== 0 || velocity.y !== 0) {
+        myPos.x += velocity.x;
+        myPos.y += velocity.y;
+        moved = true;
+    }
+
     if (moved) {
         socket.emit("move", { x: myPos.x, y: myPos.y });
     }
 
-    // 描画
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 他のプレイヤーを描画
+    // 全員を描画
     for (let id in players) {
         const p = players[id];
-        if (id === myId) {
-            drawAvatar(myPos.x, myPos.y, p.name, true);
-        } else {
-            drawAvatar(p.x, p.y, p.name, false);
-        }
+        const isMe = (id === socket.id);
+        const drawX = isMe ? myPos.x : p.x;
+        const drawY = isMe ? myPos.y : p.y;
+        
+        // アバター描画
+        ctx.fillStyle = isMe ? "#1d9bf0" : "#ff4d4d";
+        ctx.fillRect(drawX - 15, drawY - 15, 30, 30);
+        
+        // 名前
+        ctx.fillStyle = "white";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(p.name, drawX, drawY - 25);
     }
-
     requestAnimationFrame(loop);
 }
-
-function drawAvatar(x, y, name, isMe) {
-    // 仮のアバター（四角）
-    ctx.fillStyle = isMe ? "#1d9bf0" : "#ff4d4d";
-    ctx.fillRect(x - 20, y - 20, 40, 40);
-    
-    // 名前表示
-    ctx.fillStyle = "white";
-    ctx.font = "14px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(name, x, y - 30);
-}
-
 requestAnimationFrame(loop);
-
-// スマホ対応（簡易ジョイスティックの表示切り替え）
-if ("ontouchstart" in window) {
-    document.getElementById("joystick-container").style.display = "block";
-    // ここにジョイスティックのタッチ計算を追加していく
-}
 </script>
 </body>
 </html>
