@@ -5,30 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>たけい広場</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; touch-action: none; }
-        canvas { display: block; background: #333; }
-        #ui { position: fixed; top: 10px; left: 10px; color: white; pointer-events: none; text-shadow: 1px 1px 2px black; }
+        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; touch-action: none; color: white; }
+        canvas { display: block; }
         
-        /* ジョイスティックの外枠 */
+        /* エディタ（入室前）のスタイル */
+        #setup-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        #pixel-editor { display: grid; grid-template-columns: repeat(8, 30px); gap: 1px; margin: 20px 0; }
+        .pixel { width: 30px; height: 30px; background: #444; cursor: pointer; border: 1px solid #222; }
+        .pixel.active { background: #1d9bf0; } /* 塗られた色（仮） */
+        #color-palette { display: flex; gap: 5px; margin-bottom: 10px; }
+        .color-btn { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid #fff; }
+
+        #ui { position: fixed; top: 10px; left: 10px; pointer-events: none; text-shadow: 1px 1px 2px black; z-index: 10; }
         #joy-base {
-            position: fixed; bottom: 40px; left: 40px;
-            width: 100px; height: 100px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%; display: none; /* スマホのみ表示 */
+            position: fixed; bottom: 40px; left: 40px; width: 100px; height: 100px;
+            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%; display: none; z-index: 10;
         }
-        /* ジョイスティックの動く部分 */
-        #joy-stick {
-            position: absolute; width: 40px; height: 40px;
-            background: rgba(255, 255, 255, 0.5);
-            border-radius: 50%; top: 30px; left: 30px;
-        }
+        #joy-stick { position: absolute; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; top: 30px; left: 30px; }
     </style>
 </head>
 <body>
 
+<div id="setup-screen">
+    <h1>たけい広場</h1>
+    <input type="text" id="user-name" placeholder="名前を入力（必須）" style="padding: 10px; font-size: 16px;">
+    
+    <div id="pixel-editor">
+        </div>
+
+    <div id="color-palette">
+        <div class="color-btn" style="background: #1d9bf0;" data-color="#1d9bf0"></div>
+        <div class="color-btn" style="background: #ff4d4d;" data-color="#ff4d4d"></div>
+        <div class="color-btn" style="background: #44ff44;" data-color="#44ff44"></div>
+        <div class="color-btn" style="background: #ffff44;" data-color="#ffff44"></div>
+        <div class="color-btn" style="background: #444;" data-color="#444"></div> </div>
+    
+    <button onclick="joinGame()" style="padding: 10px 20px; font-size: 18px; cursor: pointer;">広場に入る</button>
+</div>
+
 <canvas id="gameCanvas"></canvas>
-<div id="ui"><div id="status">接続中...</div></div>
+<div id="ui"><div id="status"></div></div>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -39,93 +60,172 @@ const ctx = canvas.getContext("2d");
 const joyBase = document.getElementById("joy-base");
 const joyStick = document.getElementById("joy-stick");
 
-let myId = null;
 let players = {};
-let myPos = { x: 200, y: 200 };
+let myPos = { x: 800, y: 600 }; // 初期位置（画像の真ん中）
 let velocity = { x: 0, y: 0 };
 const speed = 4;
+const avatarSize = 32; // 8x8を1マス4pxで描画 (4x8=32)
+let isJoined = false;
 
-// 画面サイズ設定
+// ドット絵データ (8x8の配列、最初はグレー)
+let myAvatar = Array(8*8).fill("#444");
+let currentColor = "#1d9bf0";
+
+// 地面画像（衝突判定用）
+const groundImg = new Image();
+groundImg.src = "ground.png"; // あなたの画像ファイル名
+let groundData = null; // 画像のピクセルデータ
+
+groundImg.onload = () => {
+    // 画像が読み込まれたら、衝突判定用のキャンバスを作成してデータを取得
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = groundImg.width;
+    tempCanvas.height = groundImg.height;
+    const tempCtx = tempCanvas.getContext("2d");
+    tempCtx.drawImage(groundImg, 0, 0);
+    // 画像のRGBAデータを取得（透過判定のため）
+    groundData = tempCtx.getImageData(0, 0, groundImg.width, groundImg.height).data;
+};
+
+// --- エディタ処理 ---
+const editor = document.getElementById("pixel-editor");
+for (let i = 0; i < 64; i++) {
+    const pixel = document.createElement("div");
+    pixel.className = "pixel";
+    pixel.dataset.index = i;
+    pixel.style.background = myAvatar[i];
+    pixel.addEventListener("click", (e) => {
+        e.target.style.background = currentColor;
+        myAvatar[i] = currentColor;
+    });
+    editor.appendChild(pixel);
+}
+
+// パレット処理
+document.querySelectorAll(".color-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+        currentColor = e.target.dataset.color;
+        // 選択中の色を強調するなど、UIフィードバックを入れると良い
+    });
+});
+
+// 入室処理
+function joinGame() {
+    const name = document.getElementById("user-name").value.trim();
+    if (!name) { alert("名前を入れてね"); return; }
+    
+    document.getElementById("setup-screen").style.display = "none";
+    isJoined = true;
+    
+    // ドット絵データと名前をサーバーに送る
+    socket.emit("join", { name: name, avatar: myAvatar });
+    document.getElementById("status").innerText = `広場: ${name}`;
+    
+    resize();
+    requestAnimationFrame(loop);
+}
+
+// --- ゲーム処理 ---
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 }
 window.addEventListener("resize", resize);
-resize();
-
-const myName = prompt("名前を入力してね") || "匿名";
-socket.emit("join", { name: myName });
 
 socket.on("update_all", (data) => { players = data; });
-socket.on("player_moved", (p) => { players[p.id] = p; });
+socket.on("player_moved", (p) => { 
+    if (players[p.id]) { players[p.id].x = p.x; players[p.id].y = p.y; }
+});
 socket.on("player_left", (id) => { delete players[id]; });
 
-// --- 操作処理 ---
+// 操作処理（前回と同じ）
 const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// スマホ用ジョイスティック処理
 if ("ontouchstart" in window) {
     joyBase.style.display = "block";
     let activeTouch = null;
-
-    joyBase.addEventListener("touchstart", (e) => {
-        activeTouch = e.touches[0].identifier;
-    });
-
+    joyBase.addEventListener("touchstart", (e) => activeTouch = e.touches[0].identifier);
     window.addEventListener("touchmove", (e) => {
         let touch = Array.from(e.touches).find(t => t.identifier === activeTouch);
         if (!touch) return;
-
         const rect = joyBase.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        
         let dx = touch.clientX - centerX;
         let dy = touch.clientY - centerY;
         const distance = Math.min(50, Math.sqrt(dx*dx + dy*dy));
         const angle = Math.atan2(dy, dx);
-
-        // スティックの表示更新
         const moveX = Math.cos(angle) * distance;
         const moveY = Math.sin(angle) * distance;
         joyStick.style.transform = `translate(${moveX}px, ${moveY}px)`;
-
-        // 移動速度に変換
         velocity.x = (moveX / 50) * speed;
         velocity.y = (moveY / 50) * speed;
     }, { passive: false });
-
-    window.addEventListener("touchend", (e) => {
+    window.addEventListener("touchend", () => {
         joyStick.style.transform = `translate(0px, 0px)`;
         velocity = { x: 0, y: 0 };
         activeTouch = null;
     });
 }
 
-// メインループ
+// --- ★重要：衝突判定（画像の上だけ動ける） ---
+function canMoveTo(nx, ny) {
+    if (!groundData) return true; // 画像がまだ読み込まれていない場合は通す
+
+    // 画像の範囲外なら移動不可
+    if (nx < 0 || nx >= groundImg.width || ny < 0 || ny >= groundImg.height) return false;
+
+    // 指定座標のピクセルのAlpha値（透明度）を取得
+    const pixelIndex = (Math.floor(ny) * groundImg.width + Math.floor(nx)) * 4;
+    const alpha = groundData[pixelIndex + 3]; // 0〜255
+
+    // Alpha値が128以上（半透明より濃い）なら「地面」とみなして移動可能
+    return alpha > 128;
+}
+
 function loop() {
+    if (!isJoined) return;
+    
     let moved = false;
+    let nextX = myPos.x;
+    let nextY = myPos.y;
 
-    // キーボード移動
-    if (keys["ArrowUp"] || keys["w"]) { myPos.y -= speed; moved = true; }
-    if (keys["ArrowDown"] || keys["s"]) { myPos.y += speed; moved = true; }
-    if (keys["ArrowLeft"] || keys["a"]) { myPos.x -= speed; moved = true; }
-    if (keys["ArrowRight"] || keys["d"]) { myPos.x += speed; moved = true; }
+    // キーボード移動の計算
+    if (keys["ArrowUp"] || keys["w"]) { nextY -= speed; moved = true; }
+    if (keys["ArrowDown"] || keys["s"]) { nextY += speed; moved = true; }
+    if (keys["ArrowLeft"] || keys["a"]) { nextX -= speed; moved = true; }
+    if (keys["ArrowRight"] || keys["d"]) { nextX += speed; moved = true; }
 
-    // ジョイスティック移動
+    // ジョイスティック移動の計算
     if (velocity.x !== 0 || velocity.y !== 0) {
-        myPos.x += velocity.x;
-        myPos.y += velocity.y;
+        nextX += velocity.x;
+        nextY += velocity.y;
         moved = true;
     }
 
-    if (moved) {
+    // --- 衝突判定の適用 ---
+    // アバターの中心だけでなく、上下左右の端でも判定するとより良い（簡易的に中心のみ）
+    if (moved && canMoveTo(nextX, nextY)) {
+        myPos.x = nextX;
+        myPos.y = nextY;
         socket.emit("move", { x: myPos.x, y: myPos.y });
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // カメラ処理（自分を中心に、地面画像をスクロールさせる）
+    const camX = canvas.width / 2 - myPos.x;
+    const camY = canvas.height / 2 - myPos.y;
+    
+    ctx.save();
+    ctx.translate(camX, camY); // カメラの移動
+
+    // 地面を描画
+    if (groundImg.complete) {
+        ctx.drawImage(groundImg, 0, 0);
+    }
 
     // 全員を描画
     for (let id in players) {
@@ -134,19 +234,44 @@ function loop() {
         const drawX = isMe ? myPos.x : p.x;
         const drawY = isMe ? myPos.y : p.y;
         
-        // アバター描画
-        ctx.fillStyle = isMe ? "#1d9bf0" : "#ff4d4d";
-        ctx.fillRect(drawX - 15, drawY - 15, 30, 30);
+        // --- 独自アバター（ドット絵）の描画 ---
+        if (p.avatar) {
+            drawDotAvatar(drawX, drawY, p.avatar);
+        } else {
+            // エラー時などの予備（四角）
+            ctx.fillStyle = isMe ? "#1d9bf0" : "#ff4d4d";
+            ctx.fillRect(drawX - 16, drawY - 16, 32, 32);
+        }
         
-        // 名前
+        // 名前（太字にして見やすく）
         ctx.fillStyle = "white";
-        ctx.font = "bold 12px sans-serif";
+        ctx.font = "bold 14px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(p.name, drawX, drawY - 25);
+        ctx.fillText(p.name, drawX, drawY - 30);
     }
+    
+    ctx.restore(); // カメラの移動をリセット
+
     requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
+
+// 8x8のドット絵を描画する関数
+function drawDotAvatar(x, y, avatarData) {
+    const pixelSize = 4; // 1ドットを4x4ピクセルにする (4x8=32px)
+    const offsetX = x - (8 * pixelSize) / 2;
+    const offsetY = y - (8 * pixelSize) / 2;
+
+    for (let i = 0; i < 64; i++) {
+        const row = Math.floor(i / 8);
+        const col = i % 8;
+        ctx.fillStyle = avatarData[i];
+        
+        // グレー（消しゴム）の部分は透明にする
+        if (avatarData[i] === "#444") ctx.fillStyle = "rgba(0,0,0,0)";
+
+        ctx.fillRect(offsetX + col * pixelSize, offsetY + row * pixelSize, pixelSize, pixelSize);
+    }
+}
 </script>
 </body>
 </html>
