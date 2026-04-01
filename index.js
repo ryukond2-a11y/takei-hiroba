@@ -16,8 +16,19 @@ app.use(express.static('public'));
 let gameTimer = null; 
 
 io.on('connection', (socket) => {
+    // ★ ここを座標対応に書き換えたよ
     socket.on('join', (data) => {
-        players[socket.id] = { id: socket.id, name: data.name, avatar: data.avatar, x: 750, y: 750 };
+        // クライアントから x, y が送られてきたらそれを使う。なければ 750。
+        const startX = (data.x !== undefined) ? data.x : 750;
+        const startY = (data.y !== undefined) ? data.y : 750;
+
+        players[socket.id] = { 
+            id: socket.id, 
+            name: data.name, 
+            avatar: data.avatar, 
+            x: startX, 
+            y: startY 
+        };
         io.emit('update_all', players);
     });
 
@@ -26,7 +37,6 @@ io.on('connection', (socket) => {
         const participants = Object.keys(players).filter(id => players[id].x > 5000);
 
         if (participants.length < 2) {
-            // ★ ボタンを押した本人にだけ警告を出す（広場の人には出さない）
             socket.emit("announce", "参加者が足りません（鬼ごっこフロアに集まってね）");
             return;
         }
@@ -43,7 +53,6 @@ io.on('connection', (socket) => {
 
         io.emit("onigokko_update", gameStatus);
 
-        // ★ フロアにいる参加者にだけ「開始」をアナウンス
         participants.forEach(id => {
             io.to(id).emit("announce", "鬼ごっこ開始！");
         });
@@ -62,7 +71,6 @@ io.on('connection', (socket) => {
                 
                 let resultMsg = allFrozen ? "鬼の勝利！" : "逃げの勝利！";
                 
-                // ★ 終了アナウンスもフロアにいた人（参加者）だけに送る
                 currentParticipants.forEach(id => {
                     io.to(id).emit("announce", "終了！ " + resultMsg);
                 });
@@ -80,6 +88,8 @@ io.on('connection', (socket) => {
     // --- 当たり判定 ---
     socket.on('move', (data) => {
         if (!players[socket.id]) return;
+        
+        // 凍っている判定はそのまま
         if (gameStatus.frozenPages.includes(socket.id)) return;
 
         players[socket.id].x = data.x;
