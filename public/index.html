@@ -256,7 +256,16 @@ function updateScoreBoard() {
     document.getElementById("frozen-total").innerText = frozenCount;
     document.getElementById("oni-total").innerText = oniCount;
 }
-
+// ★タップ判定の中に「戻る」処理も追加
+window.addEventListener("click", (e) => {
+    // (中略: mx, myの計算)
+    
+    // 広場へワープ（フロアから出る）
+    if (mx > 5000 && mx < 5020 && my > 5700 && my < 5800) {
+        playWarpSound();
+        myPos.x = 750; myPos.y = 750; // 広場の中央へ
+    }
+});
 function loop() {
     if (!isJoined) return;
     let nx = myPos.x + velocity.x;
@@ -270,7 +279,11 @@ function loop() {
             myPos.x = nx; myPos.y = ny;
         }
     }
-    
+    // ★戻るゲートの描画（フロアの左端とかに置こう）
+ctx.fillStyle = "#4da6ff"; // 戻りは青いゲート
+ctx.fillRect(5000, 5700, 20, 100); 
+
+
     socket.emit("move", { x: myPos.x, y: myPos.y });
 
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
