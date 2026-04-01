@@ -46,18 +46,14 @@
 <div id="setup-screen">
     <h2>アバターを作成して広場へ</h2>
     <input type="text" id="user-name" placeholder="なまえ" style="padding: 10px; width: 200px; margin-bottom: 10px;">
-    
     <div id="pixel-editor"></div>
-
-    <div style="display:flex; margin-bottom: 20px; align-items: center; justify-content: center; flex-wrap: wrap;">
-        <div class="color-btn" style="background: #1d9bf0;" onclick="changeColor('#1d9bf0')"></div>
-        <div class="color-btn" style="background: #ff4d4d;" onclick="changeColor('#ff4d4d')"></div>
-        <div class="color-btn" style="background: #44ff44;" onclick="changeColor('#44ff44')"></div>
-        <div class="color-btn" style="background: #ffffff;" onclick="changeColor('#ffffff')"></div>
-        <span style="margin-left: 10px; font-size: 14px;">自由：</span>
-        <input type="color" id="color-picker" oninput="changeColor(this.value)" style="width:45px; height:45px; border:none; background:none; cursor:pointer;">
+    <div style="display:flex; margin-bottom: 20px;">
+        <div class="color-btn" style="background: #1d9bf0;" onclick="currentColor='#1d9bf0'"></div>
+        <div class="color-btn" style="background: #ff4d4d;" onclick="currentColor='#ff4d4d'"></div>
+        <div class="color-btn" style="background: #44ff44;" onclick="currentColor='#44ff44'"></div>
+        <div class="color-btn" style="background: #ffa500;" onclick="currentColor='#ffa500'"></div>
+        <div class="color-btn" style="background: #ffff00;" onclick="currentColor='#ffff00'"></div>
     </div>
-
     <button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
 </div>
 <div id="announcer"></div>
