@@ -1,54 +1,49 @@
 const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
-
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const http = require("http").Server(app);
+const io = require("socket.io")(http);
+const path = require("path");
 
 app.use(express.static("public"));
 
+// 全プレイヤーの情報を保存するオブジェクト
 let players = {};
 
-wss.on("connection", (ws) => {
-    const id = Math.random().toString(36).substr(2, 9);
+io.on("connection", (socket) => {
+    console.log("ユーザーが参加しました:", socket.id);
 
-    players[id] = {
-    x: Math.floor(Math.random() * 20),
-    y: Math.floor(Math.random() * 20),
-    name: "名無し"
-};
+    // 新規参加時の処理
+    socket.on("join", (data) => {
+        players[socket.id] = {
+            id: socket.id,
+            x: 400,
+            y: 300,
+            name: data.name,
+            avatar: data.avatar, // ドット絵データ（配列など）
+            color: data.color || "#1d9bf0"
+        };
+        // 全員に現在のプレイヤー状況を送信
+        io.emit("update_all", players);
+    });
 
-    ws.send(JSON.stringify({ type: "init", id, players }));
-
-    ws.on("message", (msg) => {
-        const data = JSON.parse(msg);
-
-        if (data.type === "move") {
-            players[id].x = data.x;
-            players[id].y = data.y;
-        }
-
-        if (data.type === "name") {
-            players[id].name = data.name;
+    // 移動データを受信（滑らかにするため、頻繁に送られてくる）
+    socket.on("move", (data) => {
+        if (players[socket.id]) {
+            players[socket.id].x = data.x;
+            players[socket.id].y = data.y;
+            // 他の全員に「誰がどこに動いたか」をブロードキャスト
+            socket.broadcast.emit("player_moved", players[socket.id]);
         }
     });
 
-    ws.on("close", () => {
-        delete players[id];
+    socket.on("disconnect", () => {
+        delete players[socket.id];
+        io.emit("player_left", socket.id);
+        console.log("ユーザーが退出しました:", socket.id);
     });
 });
 
-// 全員に配信（60fpsは重いので20fpsくらい）
-setInterval(() => {
-    const data = JSON.stringify({ type: "update", players });
-    wss.clients.forEach(c => {
-        if (c.readyState === WebSocket.OPEN) {
-            c.send(data);
-        }
-    });
-}, 50);
-
-server.listen(3000, () => {
-    console.log("Server running");
+const PORT = process.env.PORT || 3000;
+http.listen(PORT, () => {
+    console.log(`たけい広場 起動: http://localhost:${PORT}`);
 });
