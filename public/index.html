@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>たけい広場</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; touch-action: none; color: white; }
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; touch-action: none; color: white; }
         canvas { display: block; }
         #setup-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -16,12 +16,31 @@
         .pixel { width: 30px; height: 30px; background: #555; cursor: pointer; }
         #ui { position: fixed; top: 10px; left: 10px; z-index: 10; pointer-events: none; }
         .color-btn { width: 35px; height: 35px; border-radius: 50%; cursor: pointer; border: 2px solid #fff; margin: 0 5px; }
+        
+        /* ジョイスティック（右側・大型） */
         #joy-base {
-            position: fixed; bottom: 40px; left: 40px; width: 100px; height: 100px;
-            background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%; display: none; z-index: 10;
+            position: fixed; 
+            bottom: 60px; 
+            right: 60px; 
+            width: 160px; 
+            height: 160px; 
+            background: rgba(255,255,255,0.1); 
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%; 
+            display: none; 
+            z-index: 10;
+            touch-action: none;
         }
-        #joy-stick { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.5); border-radius: 50%; top: 30px; left: 30px; }
+        #joy-stick { 
+            position: absolute; 
+            width: 70px; 
+            height: 70px; 
+            background: rgba(255,255,255,0.5); 
+            border-radius: 50%; 
+            top: 45px; 
+            left: 45px; 
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -37,7 +56,8 @@
         <div class="color-btn" style="background: #ff4d4d;" onclick="currentColor='#ff4d4d'"></div>
         <div class="color-btn" style="background: #44ff44;" onclick="currentColor='#44ff44'"></div>
         <div class="color-btn" style="background: #ffffff;" onclick="currentColor='#ffffff'"></div>
-        <div class="color-btn" style="background: #555555;" onclick="currentColor='#555555'"></div> </div>
+        <div class="color-btn" style="background: #555555;" onclick="currentColor='#555555'"></div> 
+    </div>
     
     <button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
 </div>
@@ -53,16 +73,15 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 let players = {};
-let myPos = { x: 750, y: 750 }; // 最初から島の真ん中にセット
+let myPos = { x: 750, y: 750 }; 
 let velocity = { x: 0, y: 0 };
-const speed = 5;
+const speed = 6;
 let isJoined = false;
-const worldSize = 1500; // 広場のサイズ
+const worldSize = 1500; 
 
 let myAvatar = Array(64).fill("#555");
 let currentColor = "#1d9bf0";
 
-// エディタ生成
 const editor = document.getElementById("pixel-editor");
 for (let i = 0; i < 64; i++) {
     const div = document.createElement("div");
@@ -74,16 +93,11 @@ for (let i = 0; i < 64; i++) {
 function joinGame() {
     const name = document.getElementById("user-name").value.trim();
     if (!name) return alert("なまえをいれてね");
-    
     document.getElementById("setup-screen").style.display = "none";
     isJoined = true;
-    
-    // 入室時に座標をリセット
     myPos = { x: 750, y: 750 };
-    
     socket.emit("join", { name: name, avatar: myAvatar });
     document.getElementById("status").innerText = `広場: ${name}`;
-    
     resize();
     requestAnimationFrame(loop);
 }
@@ -102,20 +116,42 @@ const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// スマホ操作
+// --- スマホジョイスティック処理 ---
 if ("ontouchstart" in window) {
-    document.getElementById("joy-base").style.display = "block";
-    window.addEventListener("touchmove", (e) => {
+    const joyBase = document.getElementById("joy-base");
+    const joyStick = document.getElementById("joy-stick");
+    joyBase.style.display = "block";
+
+    const handleTouch = (e) => {
+        e.preventDefault();
+        const rect = joyBase.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
         const touch = e.touches[0];
-        const rect = document.getElementById("joy-base").getBoundingClientRect();
-        const centerX = rect.left + 50;
-        const centerY = rect.top + 50;
-        velocity.x = (touch.clientX - centerX) / 10;
-        velocity.y = (touch.clientY - centerY) / 10;
-        velocity.x = Math.max(-speed, Math.min(speed, velocity.x));
-        velocity.y = Math.max(-speed, Math.min(speed, velocity.y));
+
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxDist = 70;
+        
+        if (dist > maxDist) {
+            dx *= maxDist / dist;
+            dy *= maxDist / dist;
+        }
+
+        joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
+        velocity.x = (dx / maxDist) * speed;
+        velocity.y = (dy / maxDist) * speed;
+    };
+
+    window.addEventListener("touchmove", (e) => {
+        if (isJoined) handleTouch(e);
+    }, { passive: false });
+
+    window.addEventListener("touchend", () => {
+        joyStick.style.transform = `translate(0px, 0px)`;
+        velocity = { x: 0, y: 0 };
     });
-    window.addEventListener("touchend", () => { velocity = {x:0, y:0}; });
 }
 
 function movedCheck() {
@@ -136,16 +172,16 @@ function loop() {
     nextX += velocity.x;
     nextY += velocity.y;
 
-    // --- ★移動制限：worldSizeの中に閉じ込める ---
-    if (nextX > 50 && nextX < worldSize - 50) myPos.x = nextX;
-    if (nextY > 50 && nextY < worldSize - 50) myPos.y = nextY;
+    // --- 移動制限 ---
+    if (nextX > 30 && nextX < worldSize - 30) myPos.x = nextX;
+    if (nextY > 30 && nextY < worldSize - 30) myPos.y = nextY;
 
     if (movedCheck()) {
         socket.emit("move", { x: myPos.x, y: myPos.y });
     }
 
-    // 画面クリア
-    ctx.fillStyle = "#111"; // 背景（宇宙）
+    // 描画
+    ctx.fillStyle = "#111"; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const camX = canvas.width / 2 - myPos.x;
@@ -153,7 +189,7 @@ function loop() {
     ctx.save();
     ctx.translate(camX, camY);
 
-    // --- ★背景：芝生の島 ---
+    // 芝生
     ctx.fillStyle = "#3e6b3e";
     ctx.fillRect(0, 0, worldSize, worldSize);
 
@@ -165,11 +201,8 @@ function loop() {
         ctx.strokeRect(0, i, worldSize, 125);
     }
     
-    // 中央の目印
     ctx.strokeStyle = "rgba(255,255,255,0.3)";
-    ctx.beginPath();
-    ctx.arc(worldSize/2, worldSize/2, 100, 0, Math.PI*2);
-    ctx.stroke();
+    ctx.strokeRect(0, 0, worldSize, worldSize);
 
     // 全員描画
     for (let id in players) {
@@ -194,9 +227,6 @@ function loop() {
     ctx.restore();
     requestAnimationFrame(loop);
 }
-
-// 実行開始
-requestAnimationFrame(loop);
 </script>
 </body>
 </html>
