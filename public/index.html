@@ -53,12 +53,12 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 let players = {};
-let myPos = { x: 500, y: 500 }; 
+let myPos = { x: 750, y: 750 }; // 最初から島の真ん中にセット
 let velocity = { x: 0, y: 0 };
 const speed = 5;
 let isJoined = false;
+const worldSize = 1500; // 広場のサイズ
 
-// ドット絵データ初期化
 let myAvatar = Array(64).fill("#555");
 let currentColor = "#1d9bf0";
 
@@ -78,6 +78,9 @@ function joinGame() {
     document.getElementById("setup-screen").style.display = "none";
     isJoined = true;
     
+    // 入室時に座標をリセット
+    myPos = { x: 750, y: 750 };
+    
     socket.emit("join", { name: name, avatar: myAvatar });
     document.getElementById("status").innerText = `広場: ${name}`;
     
@@ -95,16 +98,11 @@ socket.on("update_all", (data) => { players = data; });
 socket.on("player_moved", (p) => { if(players[p.id]) { players[p.id].x = p.x; players[p.id].y = p.y; } });
 socket.on("player_left", (id) => { delete players[id]; });
 
-// 操作系
-// 操作系
 const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// --- ★追加：広場のサイズ設定 ---
-const worldSize = 1500; 
-
-// スマホジョイスティック（簡易版）
+// スマホ操作
 if ("ontouchstart" in window) {
     document.getElementById("joy-base").style.display = "block";
     window.addEventListener("touchmove", (e) => {
@@ -120,14 +118,16 @@ if ("ontouchstart" in window) {
     window.addEventListener("touchend", () => { velocity = {x:0, y:0}; });
 }
 
-// --- ★変更：移動制限と背景デザインを盛り込んだループ ---
+function movedCheck() {
+    return (velocity.x !== 0 || velocity.y !== 0 || keys["ArrowUp"] || keys["w"] || keys["ArrowDown"] || keys["s"] || keys["ArrowLeft"] || keys["a"] || keys["ArrowRight"] || keys["d"]);
+}
+
 function loop() {
     if (!isJoined) return;
 
     let nextX = myPos.x;
     let nextY = myPos.y;
 
-    // 移動計算
     if (keys["ArrowUp"] || keys["w"]) nextY -= speed;
     if (keys["ArrowDown"] || keys["s"]) nextY += speed;
     if (keys["ArrowLeft"] || keys["a"]) nextX -= speed;
@@ -136,61 +136,39 @@ function loop() {
     nextX += velocity.x;
     nextY += velocity.y;
 
-    // --- ★変更点1：見えない壁（ワールドの端から出られないようにする） ---
-    // 端から20pxの余裕を持って止まる
-    if (nextX > 20 && nextX < worldSize - 20) myPos.x = nextX;
-    if (nextY > 20 && nextY < worldSize - 20) myPos.y = nextY;
+    // --- ★移動制限：worldSizeの中に閉じ込める ---
+    if (nextX > 50 && nextX < worldSize - 50) myPos.x = nextX;
+    if (nextY > 50 && nextY < worldSize - 50) myPos.y = nextY;
 
     if (movedCheck()) {
         socket.emit("move", { x: myPos.x, y: myPos.y });
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 画面クリア
+    ctx.fillStyle = "#111"; // 背景（宇宙）
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // カメラ
     const camX = canvas.width / 2 - myPos.x;
     const camY = canvas.height / 2 - myPos.y;
     ctx.save();
     ctx.translate(camX, camY);
 
-    // --- ★変更点2：背景デザイン（グリッドから浮遊島へ） ---
-    // 1. 宇宙（外側の暗闇）
-    ctx.fillStyle = "#111"; 
-    ctx.fillRect(-1000, -1000, worldSize + 2000, worldSize + 2000);
-
-    // 2. 島の土台（少し濃い緑）
-    ctx.fillStyle = "#2d4d2d";
-    ctx.beginPath();
-    // roundRectが使えないブラウザ用に少し安全な書き方
-    if (ctx.roundRect) {
-        ctx.roundRect(-10, -10, worldSize + 20, worldSize + 20, 50);
-    } else {
-        ctx.rect(-10, -10, worldSize + 20, worldSize + 20);
-    }
-    ctx.fill();
-
-    // 3. メインの芝生
+    // --- ★背景：芝生の島 ---
     ctx.fillStyle = "#3e6b3e";
-    ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(0, 0, worldSize, worldSize, 40);
-    } else {
-        ctx.rect(0, 0, worldSize, worldSize);
-    }
-    ctx.fill();
+    ctx.fillRect(0, 0, worldSize, worldSize);
 
-    // 4. 地面の幾何学模様（うっすらしたライン）
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    // 模様
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
     ctx.lineWidth = 2;
-    for(let i=0; i<=worldSize; i+=200) {
-        ctx.strokeRect(i, 0, 100, worldSize);
-        ctx.strokeRect(0, i, worldSize, 100);
+    for(let i=0; i<=worldSize; i+=250) {
+        ctx.strokeRect(i, 0, 125, worldSize);
+        ctx.strokeRect(0, i, worldSize, 125);
     }
     
-    // 5. 中央のサークル（集合場所用）
-    ctx.strokeStyle = "rgba(90, 138, 90, 0.5)";
+    // 中央の目印
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
     ctx.beginPath();
-    ctx.arc(worldSize/2, worldSize/2, 150, 0, Math.PI*2);
+    ctx.arc(worldSize/2, worldSize/2, 100, 0, Math.PI*2);
     ctx.stroke();
 
     // 全員描画
@@ -208,7 +186,7 @@ function loop() {
             }
         }
         ctx.fillStyle = "white";
-        ctx.font = "bold 14px sans-serif";
+        ctx.font = "bold 16px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(p.name, x, y - 35);
     }
@@ -217,10 +195,8 @@ function loop() {
     requestAnimationFrame(loop);
 }
 
-// --- ★追加：移動があったかチェックする関数 ---
-function movedCheck() {
-    return (velocity.x !== 0 || velocity.y !== 0 || keys["ArrowUp"] || keys["w"] || keys["ArrowDown"] || keys["s"] || keys["ArrowLeft"] || keys["a"] || keys["ArrowRight"] || keys["d"]);
-}
+// 実行開始
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
