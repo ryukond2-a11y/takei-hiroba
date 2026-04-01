@@ -20,7 +20,7 @@ io.on('connection', (socket) => {
     });
 
     // --- 鬼ごっこ開始 ---
-    // --- index.js の 鬼ごっこ開始部分 ---
+// --- index.js の 鬼ごっこ開始部分 ---
 let gameTimer = null; // タイマーを管理する変数
 
 socket.on("start_onigokko", () => {
@@ -65,7 +65,6 @@ socket.on("start_onigokko", () => {
         }
     }, 1000);
 });
-
     // --- 当たり判定（ここが重要！） ---
     // --- サーバー側：index.js の move イベント周辺 ---
 socket.on('move', (data) => {
