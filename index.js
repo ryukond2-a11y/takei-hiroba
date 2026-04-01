@@ -24,14 +24,20 @@ io.on('connection', (socket) => {
 let gameTimer = null; // タイマーを管理する変数
 
 socket.on("start_onigokko", () => {
-    const ids = Object.keys(players);
-    if (ids.length < 2) return;
+    // ★ 全プレイヤーから「鬼ごっこフロア（x > 5000）」にいる人だけをリストアップ
+    const participants = Object.keys(players).filter(id => players[id].x > 5000);
 
-    if (gameTimer) clearInterval(gameTimer); // 二重起動防止
+    // 参加者が2人未満なら開始しない
+    if (participants.length < 2) {
+        io.emit("announce", "参加者が足りません（鬼ごっこフロアに集まってね）");
+        return;
+    }
+
+    if (gameTimer) clearInterval(gameTimer);
 
     gameStatus.isOnigokko = true;
     gameStatus.frozenPages = [];
-    gameStatus.timeLeft = 180; // ★3分設定
+    gameStatus.timeLeft = 180;
 
     const oniCount = Math.ceil(ids.length * 0.2);
     const shuffled = [...ids].sort(() => 0.5 - Math.random());
