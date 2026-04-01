@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>たけい広場</title>
+    <title>たけい広場 - 鬼ごっこSP</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; touch-action: none; color: white; }
         canvas { display: block; }
@@ -15,59 +15,82 @@
         #pixel-editor { display: grid; grid-template-columns: repeat(8, 30px); gap: 2px; margin: 20px 0; background: #333; padding: 5px; }
         .pixel { width: 30px; height: 30px; background: #555; cursor: pointer; }
         #ui { position: fixed; top: 10px; left: 10px; z-index: 10; pointer-events: none; }
+        #status { background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; margin-bottom: 5px; display: inline-block; }
+        /* ★スコアボード */
+        #score-board { background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; font-size: 14px; line-height: 1.6; display: none; }
+        .oni-count { color: #ff4d4d; font-weight: bold; }
+        .nige-count { color: #1d9bf0; font-weight: bold; }
+        .frozen-count { color: #aaaaaa; }
+
         .color-btn { width: 35px; height: 35px; border-radius: 50%; cursor: pointer; border: 2px solid #fff; margin: 0 5px; }
         
-        /* ジョイスティック（右側・大型） */
         #joy-base {
-            position: fixed; 
-            bottom: 60px; 
-            right: 60px; 
-            width: 160px; 
-            height: 160px; 
-            background: rgba(255,255,255,0.1); 
-            border: 3px solid rgba(255,255,255,0.3);
-            border-radius: 50%; 
-            display: none; 
-            z-index: 10;
-            touch-action: none;
+            position: fixed; bottom: 60px; right: 60px; 
+            width: 160px; height: 160px; background: rgba(255,255,255,0.1); 
+            border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; 
+            display: none; z-index: 10; touch-action: none;
         }
         #joy-stick { 
-            position: absolute; 
-            width: 70px; 
-            height: 70px; 
-            background: rgba(255,255,255,0.5); 
-            border-radius: 50%; 
-            top: 45px; 
-            left: 45px; 
-            pointer-events: none;
+            position: absolute; width: 70px; height: 70px; 
+            background: rgba(255,255,255,0.5); border-radius: 50%; 
+            top: 45px; left: 45px; pointer-events: none;
+        }
+        #game-btn {
+            position: fixed; top: 10px; right: 10px; padding: 10px 20px;
+            background: #ff4d4d; color: white; border: none; border-radius: 5px;
+            font-weight: bold; display: none; z-index: 20; pointer-events: auto;
         }
     </style>
 </head>
 <body>
 
 <div id="setup-screen">
-    <h2 style="margin-bottom:10px;">アバターを作成して広場へ</h2>
+    <h2>アバターを作成して広場へ</h2>
     <input type="text" id="user-name" placeholder="なまえ" style="padding: 10px; width: 200px; margin-bottom: 10px;">
-    
     <div id="pixel-editor"></div>
-
-    <div style="display:flex; margin-bottom: 20px;">
+    <div style="display:flex; margin-bottom: 20px; flex-wrap: wrap; justify-content: center;">
         <div class="color-btn" style="background: #1d9bf0;" onclick="currentColor='#1d9bf0'"></div>
         <div class="color-btn" style="background: #ff4d4d;" onclick="currentColor='#ff4d4d'"></div>
         <div class="color-btn" style="background: #44ff44;" onclick="currentColor='#44ff44'"></div>
         <div class="color-btn" style="background: #ffffff;" onclick="currentColor='#ffffff'"></div>
+        <div class="color-btn" style="background: #ffa500;" onclick="currentColor='#ffa500'"></div>
+        <div class="color-btn" style="background: #ffff00;" onclick="currentColor='#ffff00'"></div>
         <div class="color-btn" style="background: #555555;" onclick="currentColor='#555555'"></div> 
     </div>
-    
     <button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
-<div id="ui"><div id="status"></div></div>
+<div id="ui">
+    <div id="status"></div><br>
+    <div id="score-board">
+        逃げ: <span id="nige-total" class="nige-count">0</span>人 
+        (凍: <span id="frozen-total" class="frozen-count">0</span>人)<br>
+        鬼: <span id="oni-total" class="oni-count">0</span>人
+    </div>
+</div>
+<button id="game-btn" onclick="startGame()">鬼ごっこ開始！</button>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
+// --- ★SE (効果音) ---
+// 簡単なWeb Audio APIを使った「シュン！」という音
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playWarpSound() {
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.type = 'exponential'; 
+    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.1);
+}
+
 const socket = io();
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -75,13 +98,37 @@ const ctx = canvas.getContext("2d");
 let players = {};
 let myPos = { x: 750, y: 750 }; 
 let velocity = { x: 0, y: 0 };
+let scale = 1.0; 
 const speed = 6;
-let isJoined = false;
 const worldSize = 1500; 
-
+let isJoined = false;
 let myAvatar = Array(64).fill("#555");
 let currentColor = "#1d9bf0";
 
+// ゲーム状態
+let gameStatus = {
+    isOnigokko: false,
+    oniPages: [],
+    frozenPages: []
+};
+
+// --- アバター読み込み ---
+window.onload = () => {
+    const saved = localStorage.getItem("neda_lab_user");
+    if (saved) {
+        const data = JSON.parse(saved);
+        document.getElementById("user-name").value = data.name;
+        myAvatar = data.avatar;
+        updateEditor();
+    }
+};
+
+function updateEditor() {
+    const pixels = document.querySelectorAll(".pixel");
+    myAvatar.forEach((color, i) => { if(pixels[i]) pixels[i].style.background = color; });
+}
+
+// エディタ生成
 const editor = document.getElementById("pixel-editor");
 for (let i = 0; i < 64; i++) {
     const div = document.createElement("div");
@@ -93,9 +140,15 @@ for (let i = 0; i < 64; i++) {
 function joinGame() {
     const name = document.getElementById("user-name").value.trim();
     if (!name) return alert("なまえをいれてね");
+    
+    // --- アバター保存 ---
+    localStorage.setItem("neda_lab_user", JSON.stringify({ name: name, avatar: myAvatar }));
+
     document.getElementById("setup-screen").style.display = "none";
+    // 音声コンテキストを有効化（スマホ対策）
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    
     isJoined = true;
-    myPos = { x: 750, y: 750 };
     socket.emit("join", { name: name, avatar: myAvatar });
     document.getElementById("status").innerText = `広場: ${name}`;
     resize();
@@ -108,124 +161,173 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 
-socket.on("update_all", (data) => { players = data; });
+// --- ズーム処理 ---
+let startDist = 0;
+window.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) startDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+});
+window.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 2) {
+        const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+        scale *= dist / startDist;
+        scale = Math.max(0.7, Math.min(2.0, scale)); // ズーム制限（引きすぎ防止）
+        startDist = dist;
+    }
+}, { passive: false });
+
+// ★タップでワープ判定
+window.addEventListener("click", (e) => {
+    if (!isJoined) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - canvas.width/2) / scale + myPos.x;
+    const my = (e.clientY - rect.top - canvas.height/2) / scale + myPos.y;
+    
+    // ゲートの位置（広場右端）
+    if (mx > 1480 && mx < 1500 && my > 700 && my < 800) {
+        playWarpSound();
+        myPos.x = 5100; myPos.y = 5750;
+    }
+});
+
+socket.on("update_all", (data) => { players = data; updateScoreBoard(); });
 socket.on("player_moved", (p) => { if(players[p.id]) { players[p.id].x = p.x; players[p.id].y = p.y; } });
-socket.on("player_left", (id) => { delete players[id]; });
+
+// ★鬼ごっこ関連のソケットイベント（サーバー側実装前提）
+socket.on("onigokko_update", (data) => {
+    gameStatus = data;
+    updateScoreBoard();
+});
 
 const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// --- スマホジョイスティック処理 ---
+// ジョイスティック処理（高性能版）
 if ("ontouchstart" in window) {
     const joyBase = document.getElementById("joy-base");
     const joyStick = document.getElementById("joy-stick");
     joyBase.style.display = "block";
-
     const handleTouch = (e) => {
         e.preventDefault();
         const rect = joyBase.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const touch = e.touches[0];
-
         let dx = touch.clientX - centerX;
         let dy = touch.clientY - centerY;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const maxDist = 70;
-        
-        if (dist > maxDist) {
-            dx *= maxDist / dist;
-            dy *= maxDist / dist;
-        }
-
-        joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
-        velocity.x = (dx / maxDist) * speed;
-        velocity.y = (dy / maxDist) * speed;
+        const dist = Math.min(70, Math.sqrt(dx*dx + dy*dy));
+        const angle = Math.atan2(dy, dx);
+        const mx = Math.cos(angle) * dist;
+        const my = Math.sin(angle) * dist;
+        joyStick.style.transform = `translate(${mx}px, ${my}px)`;
+        velocity.x = (mx / 70) * speed;
+        velocity.y = (my / 70) * speed;
     };
-
-    window.addEventListener("touchmove", (e) => {
-        if (isJoined) handleTouch(e);
-    }, { passive: false });
-
-    window.addEventListener("touchend", () => {
-        joyStick.style.transform = `translate(0px, 0px)`;
-        velocity = { x: 0, y: 0 };
-    });
+    window.addEventListener("touchmove", handleTouch, { passive: false });
+    window.addEventListener("touchend", () => { joyStick.style.transform = `translate(0px, 0px)`; velocity = { x: 0, y: 0 }; });
 }
 
-function movedCheck() {
-    return (velocity.x !== 0 || velocity.y !== 0 || keys["ArrowUp"] || keys["w"] || keys["ArrowDown"] || keys["s"] || keys["ArrowLeft"] || keys["a"] || keys["ArrowRight"] || keys["d"]);
+function drawFloor(x, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, worldSize, worldSize);
+    // レンガ模様
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for(let i=0; i<=worldSize; i+=50) {
+        for(let j=0; j<=worldSize; j+=25) {
+            ctx.strokeRect(x + i + (j%50===0?0:25), y + j, 50, 25);
+        }
+    }
+}
+
+// ★スコアボード更新
+function updateScoreBoard() {
+    if (!gameStatus.isOnigokko) {
+        document.getElementById("score-board").style.display = "none";
+        return;
+    }
+    document.getElementById("score-board").style.display = "block";
+    const totalPlayers = Object.keys(players).length;
+    const oniCount = gameStatus.oniPages.length;
+    const frozenCount = gameStatus.frozenPages.length;
+    const nigeCount = totalPlayers - oniCount;
+
+    document.getElementById("nige-total").innerText = nigeCount;
+    document.getElementById("frozen-total").innerText = frozenCount;
+    document.getElementById("oni-total").innerText = oniCount;
 }
 
 function loop() {
     if (!isJoined) return;
+    let nx = myPos.x + velocity.x;
+    let ny = myPos.y + velocity.y;
+    if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
+    if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
 
-    let nextX = myPos.x;
-    let nextY = myPos.y;
-
-    if (keys["ArrowUp"] || keys["w"]) nextY -= speed;
-    if (keys["ArrowDown"] || keys["s"]) nextY += speed;
-    if (keys["ArrowLeft"] || keys["a"]) nextX -= speed;
-    if (keys["ArrowRight"] || keys["d"]) nextX += speed;
-    
-    nextX += velocity.x;
-    nextY += velocity.y;
-
-    // --- 移動制限 ---
-    if (nextX > 30 && nextX < worldSize - 30) myPos.x = nextX;
-    if (nextY > 30 && nextY < worldSize - 30) myPos.y = nextY;
-
-    if (movedCheck()) {
-        socket.emit("move", { x: myPos.x, y: myPos.y });
+    // 移動制限（タップワープなので単純化）
+    if (nx > 30 && nx < 6500) { 
+        if ((nx < 1500 && ny > 0 && ny < 1500) || (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500)) {
+            myPos.x = nx; myPos.y = ny;
+        }
     }
+    
+    socket.emit("move", { x: myPos.x, y: myPos.y });
 
-    // 描画
-    ctx.fillStyle = "#111"; 
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const camX = canvas.width / 2 - myPos.x;
-    const camY = canvas.height / 2 - myPos.y;
+    ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // カメラ（中央固定 + ズーム）
     ctx.save();
-    ctx.translate(camX, camY);
+    ctx.translate(canvas.width/2, canvas.height/2);
+    ctx.scale(scale, scale);
+    ctx.translate(-myPos.x, -myPos.y);
 
-    // 芝生
-    ctx.fillStyle = "#3e6b3e";
-    ctx.fillRect(0, 0, worldSize, worldSize);
-
-    // 模様
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.lineWidth = 2;
-    for(let i=0; i<=worldSize; i+=250) {
-        ctx.strokeRect(i, 0, 125, worldSize);
-        ctx.strokeRect(0, i, worldSize, 125);
-    }
+    drawFloor(0, 0, "#3e6b3e"); // 広場
+    drawFloor(5000, 5000, "#3e6b3e"); // 鬼ごっこフロア（同じ床）
     
-    ctx.strokeStyle = "rgba(255,255,255,0.3)";
-    ctx.strokeRect(0, 0, worldSize, worldSize);
+    // ゲート描画
+    ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100);
 
     // 全員描画
     for (let id in players) {
         const p = players[id];
-        const isMe = (id === socket.id);
-        const x = isMe ? myPos.x : p.x;
-        const y = isMe ? myPos.y : p.y;
+        const x = (id === socket.id) ? myPos.x : p.x;
+        const y = (id === socket.id) ? myPos.y : p.y;
+        
+        // ★鬼・氷の見た目演出
+        const isOni = gameStatus.oniPages.includes(id);
+        const isFrozen = gameStatus.frozenPages.includes(id);
 
         if (p.avatar) {
+            ctx.save();
+            if (isFrozen) ctx.globalAlpha = 0.5; // 凍ってる人は半透明
             for (let i = 0; i < 64; i++) {
                 if (p.avatar[i] === "#555555" || p.avatar[i] === "#555") continue;
-                ctx.fillStyle = p.avatar[i];
+                ctx.fillStyle = isFrozen ? "#ffffff" : p.avatar[i]; // 凍ってたら白
                 ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
             }
+            if (isOni) {
+                // 鬼は赤いオーラ
+                ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+            }
+            ctx.restore();
         }
-        ctx.fillStyle = "white";
-        ctx.font = "bold 16px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(p.name, x, y - 35);
+        ctx.fillStyle = isOni ? "#ff4d4d" : "white"; // 鬼の名前は赤
+        ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText(p.name + (isFrozen ? " (氷)" : ""), x, y - 35);
     }
-
     ctx.restore();
+
+    // 鬼ごっこ開始ボタンの表示制御
+    const inGameFloor = (myPos.x > 5000);
+    document.getElementById("game-btn").style.display = inGameFloor ? "block" : "none";
+
     requestAnimationFrame(loop);
+}
+
+function startGame() {
+    alert("鬼ごっこを開始します！（鬼の数は参加者の20%切り上げ）");
+    socket.emit("start_onigokko"); // サーバー側で Math.ceil(total * 0.2) のロジックを実装
 }
 </script>
 </body>
