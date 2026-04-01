@@ -47,13 +47,15 @@
     <h2>アバターを作成して広場へ</h2>
     <input type="text" id="user-name" placeholder="なまえ" style="padding: 10px; width: 200px; margin-bottom: 10px;">
     <div id="pixel-editor"></div>
-    <div style="display:flex; margin-bottom: 20px;">
-        <div class="color-btn" style="background: #1d9bf0;" onclick="currentColor='#1d9bf0'"></div>
-        <div class="color-btn" style="background: #ff4d4d;" onclick="currentColor='#ff4d4d'"></div>
-        <div class="color-btn" style="background: #44ff44;" onclick="currentColor='#44ff44'"></div>
-        <div class="color-btn" style="background: #ffa500;" onclick="currentColor='#ffa500'"></div>
-        <div class="color-btn" style="background: #ffff00;" onclick="currentColor='#ffff00'"></div>
-    </div>
+    <div style="display:flex; align-items:center; margin-bottom: 20px;">
+    <div class="color-btn" style="background: #1d9bf0;" onclick="currentColor='#1d9bf0'"></div>
+    <div class="color-btn" style="background: #ff4d4d;" onclick="currentColor='#ff4d4d'"></div>
+    
+    <span style="margin-left:15px; margin-right:5px;">自由な色:</span>
+    <input type="color" id="color-picker" value="#1d9bf0" 
+           oninput="currentColor=this.value" 
+           style="width:50px; height:40px; cursor:pointer;">
+</div>
     <button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
 </div>
 
@@ -214,6 +216,17 @@ function loop() {
             }
         }
         socket.emit("move", { x: myPos.x, y: myPos.y });
+       
+// 行き（右側へ）
+if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
+    playWarpSound();
+    myPos.x = 5100; myPos.y = 5750;
+}
+// 戻り（左側へ）
+if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
+    playWarpSound();
+    myPos.x = 750; myPos.y = 750;
+}
     }
 　
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
