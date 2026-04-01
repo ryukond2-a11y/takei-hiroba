@@ -86,7 +86,26 @@ function playWarpSound() {
     osc.start(); osc.stop(audioCtx.currentTime + 0.1);
 }
 
-const socket = io();
+
+const socket = io({
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000
+});
+
+// ★このブロックを新しく追加（socketのすぐ下でOK）
+socket.on('connect', () => {
+    if (isJoined) {
+        const name = document.getElementById("user-name").value.trim();
+        // サーバーがリセットされても、今の座標(myPos)とアバターを送り直して復帰する
+        socket.emit("join", { 
+            name: name, 
+            avatar: myAvatar,
+            x: myPos.x,
+            y: myPos.y 
+        });
+    }
+});
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 let players = {}, myPos = { x: 750, y: 750 }, velocity = { x: 0, y: 0 }, scale = 1.0;
@@ -116,18 +135,27 @@ for (let i = 0; i < 64; i++) {
     editor.appendChild(div);
 }
 
+// ★ここを書き換え
 function joinGame() {
     const name = document.getElementById("user-name").value.trim();
     if (!name) return alert("なまえをいれてね");
     localStorage.setItem("neda_lab_user", JSON.stringify({ name, avatar: myAvatar }));
     document.getElementById("setup-screen").style.display = "none";
     if (audioCtx.state === 'suspended') audioCtx.resume();
+    
     isJoined = true;
-    socket.emit("join", { name, avatar: myAvatar });
+    
+    // ★ここ！ `{ name, avatar: myAvatar }` だったところに `x, y` を追加
+    socket.emit("join", { 
+        name: name, 
+        avatar: myAvatar, 
+        x: myPos.x, 
+        y: myPos.y 
+    });
+    
     document.getElementById("status").innerText = `広場: ${name}`;
     resize(); requestAnimationFrame(loop);
 }
-
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener("resize", resize);
 
