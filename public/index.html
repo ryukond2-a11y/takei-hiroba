@@ -1,101 +1,123 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>たけい広場</title>
-<style>
-body { margin:0; overflow:hidden; background:#222; }
-.player {
-  position:absolute;
-  width:20px;
-  height:20px;
-  background:#4af;
-}
-.name {
-  position:absolute;
-  font-size:12px;
-  color:#fff;
-  transform:translate(-10px,-15px);
-}
-</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>たけい広場</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+        canvas { display: block; background: #333; } /* 広場の地面の色 */
+        #ui { position: fixed; top: 10px; left: 10px; color: white; pointer-events: none; }
+        #joystick-container {
+            position: fixed; bottom: 50px; left: 50px;
+            width: 120px; height: 120px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%; display: none; /* スマホ時のみ表示 */
+        }
+        #joystick-stick {
+            position: absolute; width: 50px; height: 50px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%; top: 35px; left: 35px;
+        }
+    </style>
 </head>
 <body>
 
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui">
+    <div id="status">接続中...</div>
+</div>
+
+<div id="joystick-container">
+    <div id="joystick-stick"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
 <script>
-const ws = new WebSocket(location.origin.replace("http","ws"));
-let smoothPlayers = {};
-let myId;
+const socket = io();
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let myId = null;
 let players = {};
-let my = { x: 5, y: 5 };
+let myPos = { x: 400, y: 300, vx: 0, vy: 0 };
+const speed = 4;
 
-const name = prompt("名前入力") || "名無し";
+// 画面サイズ設定
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
 
-ws.onopen = () => {
-    ws.send(JSON.stringify({ type: "name", name }));
-};
+// 入室（本来はここで名前やドット絵を要求）
+const myName = prompt("広場での名前を入力してください") || "匿名";
+socket.emit("join", { name: myName, avatar: null });
 
-ws.onmessage = (msg) => {
-    const data = JSON.parse(msg.data);
-
-    if (data.type === "init") {
-        myId = data.id;
-        players = data.players;
-    }
-
-    if (data.type === "update") {
-        players = data.players;
-    }
-};
-function draw() {
-    document.body.innerHTML = "";
-
-    
-document.addEventListener("click", e => {
-    const x = Math.floor(e.clientX / 20);
-    const y = Math.floor(e.clientY / 20);
-
-    my.x = x;
-    my.y = y;
-
-    ws.send(JSON.stringify({
-        type: "move",
-        x: my.x,
-        y: my.y
-    }));
-});
-document.addEventListener("keydown", e => {
-   if (e.key === "w" || e.key === "ArrowUp") my.y--;
-if (e.key === "s" || e.key === "ArrowDown") my.y++;
-if (e.key === "a" || e.key === "ArrowLeft") my.x--;
-if (e.key === "d" || e.key === "ArrowRight") my.x++;
-
-    ws.send(JSON.stringify({
-        type: "move",
-        x: my.x,
-        y: my.y
-    }));
+socket.on("connect", () => {
+    myId = socket.id;
+    document.getElementById("status").innerText = `広場: ${myName}`;
 });
 
+socket.on("update_all", (data) => { players = data; });
+socket.on("player_moved", (p) => { players[p.id] = p; });
+socket.on("player_left", (id) => { delete players[id]; });
+
+// キーボード操作
+const keys = {};
+window.addEventListener("keydown", (e) => keys[e.key] = true);
+window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+// メインループ（ここで滑らかに描画）
+function loop() {
+    // 自分の移動計算
+    let moved = false;
+    if (keys["ArrowUp"] || keys["w"]) { myPos.y -= speed; moved = true; }
+    if (keys["ArrowDown"] || keys["s"]) { myPos.y += speed; moved = true; }
+    if (keys["ArrowLeft"] || keys["a"]) { myPos.x -= speed; moved = true; }
+    if (keys["ArrowRight"] || keys["d"]) { myPos.x += speed; moved = true; }
+
+    if (moved) {
+        socket.emit("move", { x: myPos.x, y: myPos.y });
+    }
+
+    // 描画
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 他のプレイヤーを描画
     for (let id in players) {
         const p = players[id];
-
-        const el = document.createElement("div");
-        el.className = "player";
-        el.style.left = p.x * 20 + "px";
-        el.style.top = p.y * 20 + "px";
-
-        const nameEl = document.createElement("div");
-        nameEl.className = "name";
-        nameEl.innerText = p.name;
-        nameEl.style.left = p.x * 20 + "px";
-        nameEl.style.top = p.y * 20 + "px";
-
-        document.body.appendChild(el);
-        document.body.appendChild(nameEl);
+        if (id === myId) {
+            drawAvatar(myPos.x, myPos.y, p.name, true);
+        } else {
+            drawAvatar(p.x, p.y, p.name, false);
+        }
     }
-}
-  setInterval(draw, 16);
-</script>
 
+    requestAnimationFrame(loop);
+}
+
+function drawAvatar(x, y, name, isMe) {
+    // 仮のアバター（四角）
+    ctx.fillStyle = isMe ? "#1d9bf0" : "#ff4d4d";
+    ctx.fillRect(x - 20, y - 20, 40, 40);
+    
+    // 名前表示
+    ctx.fillStyle = "white";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(name, x, y - 30);
+}
+
+requestAnimationFrame(loop);
+
+// スマホ対応（簡易ジョイスティックの表示切り替え）
+if ("ontouchstart" in window) {
+    document.getElementById("joystick-container").style.display = "block";
+    // ここにジョイスティックのタッチ計算を追加していく
+}
+</script>
 </body>
 </html>
