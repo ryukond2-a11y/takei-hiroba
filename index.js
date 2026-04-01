@@ -20,31 +20,51 @@ io.on('connection', (socket) => {
     });
 
     // --- 鬼ごっこ開始 ---
-    socket.on("start_onigokko", () => {
-        const ids = Object.keys(players);
-        if (ids.length < 2) return;
+    // --- index.js の 鬼ごっこ開始部分 ---
+let gameTimer = null; // タイマーを管理する変数
 
-        gameStatus.isOnigokko = true;
-        gameStatus.frozenPages = [];
-        gameStatus.timeLeft = 60; // 1分間
+socket.on("start_onigokko", () => {
+    const ids = Object.keys(players);
+    if (ids.length < 2) return;
 
-        // 鬼の選出（20%切り上げ）
-        const oniCount = Math.ceil(ids.length * 0.2);
-        const shuffled = [...ids].sort(() => 0.5 - Math.random());
-        gameStatus.oniPages = shuffled.slice(0, oniCount);
+    if (gameTimer) clearInterval(gameTimer); // 二重起動防止
 
-        io.emit("onigokko_update", gameStatus);
-        
-        // カウントダウン開始
-        const timer = setInterval(() => {
-            gameStatus.timeLeft--;
-            if (gameStatus.timeLeft <= 0) {
-                gameStatus.isOnigokko = false;
-                clearInterval(timer);
-            }
+    gameStatus.isOnigokko = true;
+    gameStatus.frozenPages = [];
+    gameStatus.timeLeft = 180; // ★3分設定
+
+    const oniCount = Math.ceil(ids.length * 0.2);
+    const shuffled = [...ids].sort(() => 0.5 - Math.random());
+    gameStatus.oniPages = shuffled.slice(0, oniCount);
+
+    io.emit("onigokko_update", gameStatus);
+    io.emit("announce", "鬼ごっこ開始！"); // 開始のアナウンス
+
+    gameTimer = setInterval(() => {
+        gameStatus.timeLeft--;
+
+        // 全員凍結したかチェック
+        const nigeIds = Object.keys(players).filter(id => !gameStatus.oniPages.includes(id));
+        const allFrozen = nigeIds.every(id => gameStatus.frozenPages.includes(id));
+
+        if (gameStatus.timeLeft <= 0 || allFrozen) {
+            clearInterval(gameTimer);
+            gameTimer = null;
+            
+            // 勝敗判定
+            let resultMsg = allFrozen ? "鬼の勝利！" : "逃げの勝利！";
+            io.emit("announce", "終了！ " + resultMsg);
+
+            // ★見た目を戻すためにデータをリセット
+            gameStatus.isOnigokko = false;
+            gameStatus.oniPages = [];
+            gameStatus.frozenPages = [];
             io.emit("onigokko_update", gameStatus);
-        }, 1000);
-    });
+        } else {
+            io.emit("onigokko_update", gameStatus);
+        }
+    }, 1000);
+});
 
     // --- 当たり判定（ここが重要！） ---
     // --- サーバー側：index.js の move イベント周辺 ---
