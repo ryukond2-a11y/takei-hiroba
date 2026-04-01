@@ -32,6 +32,13 @@
             background: #ff4d4d; color: white; border: none; border-radius: 5px;
             font-weight: bold; display: none; z-index: 20; pointer-events: auto;
         }
+        /* 中央のお知らせ表示 */
+#announcer {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 48px; font-weight: bold; color: #ff4d4d;
+    text-shadow: 0 0 20px #000; z-index: 1000; pointer-events: none;
+    display: none;
+}
     </style>
 </head>
 <body>
@@ -49,7 +56,7 @@
     </div>
     <button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
 </div>
-
+<div id="announcer"></div>
 <canvas id="gameCanvas"></canvas>
 <div id="ui">
     <div id="status"></div><br>
@@ -148,7 +155,19 @@ window.addEventListener("click", (e) => {
 socket.on("update_all", (data) => { players = data; updateScoreBoard(); });
 socket.on("player_moved", (p) => { if(players[p.id]) { players[p.id].x = p.x; players[p.id].y = p.y; } });
 socket.on("onigokko_update", (data) => { gameStatus = data; updateScoreBoard(); });
+// --- アナウンス演出の受信 ---
+socket.on("announce", (msg) => {
+    const el = document.getElementById("announcer");
+    el.innerText = msg;
+    el.style.display = "block";
+    
+    // 2秒後に消す（「終了！」の時は少し長めに見せる）
+    setTimeout(() => {
+        el.style.display = "none";
+    }, 2000);
+});
 
+// loop関数の修正は不要（gameStatus.isOnigokkoがfalseになれば自動で見た目が戻るよ！）
 const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
