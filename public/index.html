@@ -96,9 +96,13 @@ socket.on("player_moved", (p) => { if(players[p.id]) { players[p.id].x = p.x; pl
 socket.on("player_left", (id) => { delete players[id]; });
 
 // 操作系
+// 操作系
 const keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+// --- ★追加：広場のサイズ設定 ---
+const worldSize = 1500; 
 
 // スマホジョイスティック（簡易版）
 if ("ontouchstart" in window) {
@@ -110,26 +114,34 @@ if ("ontouchstart" in window) {
         const centerY = rect.top + 50;
         velocity.x = (touch.clientX - centerX) / 10;
         velocity.y = (touch.clientY - centerY) / 10;
-        // 速度制限
         velocity.x = Math.max(-speed, Math.min(speed, velocity.x));
         velocity.y = Math.max(-speed, Math.min(speed, velocity.y));
     });
     window.addEventListener("touchend", () => { velocity = {x:0, y:0}; });
 }
 
+// --- ★変更：移動制限と背景デザインを盛り込んだループ ---
 function loop() {
     if (!isJoined) return;
 
-    // 移動計算
-    if (keys["ArrowUp"] || keys["w"]) myPos.y -= speed;
-    if (keys["ArrowDown"] || keys["s"]) myPos.y += speed;
-    if (keys["ArrowLeft"] || keys["a"]) myPos.x -= speed;
-    if (keys["ArrowRight"] || keys["d"]) myPos.x += speed;
-    
-    myPos.x += velocity.x;
-    myPos.y += velocity.y;
+    let nextX = myPos.x;
+    let nextY = myPos.y;
 
-    if (velocity.x !== 0 || velocity.y !== 0 || keys["ArrowUp"] || keys["w"] || keys["ArrowDown"] || keys["s"] || keys["ArrowLeft"] || keys["a"] || keys["ArrowRight"] || keys["d"]) {
+    // 移動計算
+    if (keys["ArrowUp"] || keys["w"]) nextY -= speed;
+    if (keys["ArrowDown"] || keys["s"]) nextY += speed;
+    if (keys["ArrowLeft"] || keys["a"]) nextX -= speed;
+    if (keys["ArrowRight"] || keys["d"]) nextX += speed;
+    
+    nextX += velocity.x;
+    nextY += velocity.y;
+
+    // --- ★変更点1：見えない壁（ワールドの端から出られないようにする） ---
+    // 端から20pxの余裕を持って止まる
+    if (nextX > 20 && nextX < worldSize - 20) myPos.x = nextX;
+    if (nextY > 20 && nextY < worldSize - 20) myPos.y = nextY;
+
+    if (movedCheck()) {
         socket.emit("move", { x: myPos.x, y: myPos.y });
     }
 
@@ -141,12 +153,45 @@ function loop() {
     ctx.save();
     ctx.translate(camX, camY);
 
-    // 地面（グリッドを描画して動いている感を出す）
-    ctx.strokeStyle = "#444";
-    for(let i=0; i<2000; i+=100) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 2000); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(2000, i); ctx.stroke();
+    // --- ★変更点2：背景デザイン（グリッドから浮遊島へ） ---
+    // 1. 宇宙（外側の暗闇）
+    ctx.fillStyle = "#111"; 
+    ctx.fillRect(-1000, -1000, worldSize + 2000, worldSize + 2000);
+
+    // 2. 島の土台（少し濃い緑）
+    ctx.fillStyle = "#2d4d2d";
+    ctx.beginPath();
+    // roundRectが使えないブラウザ用に少し安全な書き方
+    if (ctx.roundRect) {
+        ctx.roundRect(-10, -10, worldSize + 20, worldSize + 20, 50);
+    } else {
+        ctx.rect(-10, -10, worldSize + 20, worldSize + 20);
     }
+    ctx.fill();
+
+    // 3. メインの芝生
+    ctx.fillStyle = "#3e6b3e";
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(0, 0, worldSize, worldSize, 40);
+    } else {
+        ctx.rect(0, 0, worldSize, worldSize);
+    }
+    ctx.fill();
+
+    // 4. 地面の幾何学模様（うっすらしたライン）
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.lineWidth = 2;
+    for(let i=0; i<=worldSize; i+=200) {
+        ctx.strokeRect(i, 0, 100, worldSize);
+        ctx.strokeRect(0, i, worldSize, 100);
+    }
+    
+    // 5. 中央のサークル（集合場所用）
+    ctx.strokeStyle = "rgba(90, 138, 90, 0.5)";
+    ctx.beginPath();
+    ctx.arc(worldSize/2, worldSize/2, 150, 0, Math.PI*2);
+    ctx.stroke();
 
     // 全員描画
     for (let id in players) {
@@ -156,7 +201,6 @@ function loop() {
         const y = isMe ? myPos.y : p.y;
 
         if (p.avatar) {
-            // ドット絵描画
             for (let i = 0; i < 64; i++) {
                 if (p.avatar[i] === "#555555" || p.avatar[i] === "#555") continue;
                 ctx.fillStyle = p.avatar[i];
@@ -164,13 +208,18 @@ function loop() {
             }
         }
         ctx.fillStyle = "white";
-        ctx.font = "12px sans-serif";
+        ctx.font = "bold 14px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(p.name, x, y - 30);
+        ctx.fillText(p.name, x, y - 35);
     }
 
     ctx.restore();
     requestAnimationFrame(loop);
+}
+
+// --- ★追加：移動があったかチェックする関数 ---
+function movedCheck() {
+    return (velocity.x !== 0 || velocity.y !== 0 || keys["ArrowUp"] || keys["w"] || keys["ArrowDown"] || keys["s"] || keys["ArrowLeft"] || keys["a"] || keys["ArrowRight"] || keys["d"]);
 }
 </script>
 </body>
