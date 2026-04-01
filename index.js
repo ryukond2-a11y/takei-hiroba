@@ -47,35 +47,47 @@ io.on('connection', (socket) => {
     });
 
     // --- 当たり判定（ここが重要！） ---
-    socket.on('move', (data) => {
-        if (!players[socket.id]) return;
-        
-        // 凍っている人は動けない（動かさない）
-        if (gameStatus.frozenPages.includes(socket.id)) return;
+    // --- サーバー側：index.js の move イベント周辺 ---
+socket.on('move', (data) => {
+    if (!players[socket.id]) return;
+    
+    // 凍っている人は絶対に動かさない
+    if (gameStatus.frozenPages.includes(socket.id)) return;
 
-        players[socket.id].x = data.x;
-        players[socket.id].y = data.y;
+    players[socket.id].x = data.x;
+    players[socket.id].y = data.y;
 
-        // 鬼が逃げに触れたかチェック
-        if (gameStatus.isOnigokko && gameStatus.oniPages.includes(socket.id)) {
-            for (let targetId in players) {
-                if (gameStatus.oniPages.includes(targetId)) continue; // 鬼同士はスルー
-                if (gameStatus.frozenPages.includes(targetId)) continue; // すでに凍ってればスルー
+    if (gameStatus.isOnigokko) {
+        const myId = socket.id;
+        const myX = players[myId].x;
+        const myY = players[myId].y;
 
-                const dx = players[socket.id].x - players[targetId].x;
-                const dy = players[socket.id].y - players[targetId].y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
+        for (let targetId in players) {
+            if (myId === targetId) continue;
+            
+            const dx = myX - players[targetId].x;
+            const dy = myY - players[targetId].y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
 
-                if (dist < 40) { // 触れた！
+            if (dist < 40) { // 当たり判定
+                const isIMoni = gameStatus.oniPages.includes(myId);
+                const isTargetFrozen = gameStatus.frozenPages.includes(targetId);
+
+                // 【攻撃】自分が鬼で、相手が逃げ（凍ってない）なら、凍らせる
+                if (isIMoni && !gameStatus.oniPages.includes(targetId) && !isTargetFrozen) {
                     gameStatus.frozenPages.push(targetId);
+                    io.emit("onigokko_update", gameStatus);
+                } 
+                // 【復活】自分が逃げで、相手が凍っている逃げなら、助ける
+                else if (!isIMoni && !gameStatus.oniPages.includes(targetId) && isTargetFrozen) {
+                    gameStatus.frozenPages = gameStatus.frozenPages.filter(id => id !== targetId);
                     io.emit("onigokko_update", gameStatus);
                 }
             }
         }
-        
-        socket.broadcast.emit('player_moved', players[socket.id]);
-    });
-
+    }
+    socket.broadcast.emit('player_moved', players[socket.id]);
+});
     socket.on('disconnect', () => {
         delete players[socket.id];
         io.emit('update_all', players);
