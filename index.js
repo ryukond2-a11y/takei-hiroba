@@ -1,27 +1,23 @@
-const express = require('express');
+Const express = require('express');
 const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http);
 
 let players = {};
-let gameStatus = { isOnigokko: false, oniPages: [], frozenPages: [], timeLeft: 0 };
-
-// --- サッカー用変数 ---
-let ball = { x: 750, y: 2500, vx: 0, vy: 0, lastTouch: null, secondLastTouch: null };
-let soccerStatus = { 
-    isSoccer: false, 
-    score: { blue: 0, white: 0 }, 
-    timeLeft: 0,
-    stats: {} // { socketId: { goals: 0, assists: 0, name: "" } }
+let gameStatus = { 
+    isOnigokko: false, 
+    oniPages: [], 
+    frozenPages: [],
+    timeLeft: 0 
 };
-let soccerTimer = null;
 
 app.use(express.static('public'));
 
+let gameTimer = null; 
+
 io.on('connection', (socket) => {
+    // 参加・自動復帰
     socket.on('join', (data) => {
-        // チーム分け（青と白を交互に）
-        const team = Object.keys(players).length % 2 === 0 ? 'blue' : 'white';
         const startX = (data.x !== undefined) ? data.x : 750;
         const startY = (data.y !== undefined) ? data.y : 750;
 
@@ -30,59 +26,101 @@ io.on('connection', (socket) => {
             name: data.name, 
             avatar: data.avatar, 
             x: startX, 
-            y: startY,
-            team: team 
+            y: startY 
         };
         io.emit('update_all', players);
     });
 
-    // --- サッカー開始 ---
-    socket.on("start_soccer", () => {
-        if (soccerStatus.isSoccer) return;
-        soccerStatus.isSoccer = true;
-        soccerStatus.score = { blue: 0, white: 0 };
-        soccerStatus.timeLeft = 180;
-        soccerStatus.stats = {};
-        
-        // 全プレイヤーの統計を初期化
-        for(let id in players) {
-            soccerStatus.stats[id] = { goals: 0, assists: 0, name: players[id].name };
+    // --- 鬼ごっこ開始 ---
+    socket.on("start_onigokko", () => {
+        // ★ すでに開始しているなら、二重に開始させない
+        if (gameStatus.isOnigokko) return;
+
+        const participants = Object.keys(players).filter(id => players[id].x > 5000);
+
+        if (participants.length < 2) {
+            socket.emit("announce", "参加者が足りません（鬼ごっこフロアに集まってね）");
+            return;
         }
 
-        ball = { x: 750, y: 2500, vx: 0, vy: 0, lastTouch: null, secondLastTouch: null };
-        io.emit("soccer_update", soccerStatus);
+        if (gameTimer) clearInterval(gameTimer);
 
-        soccerTimer = setInterval(() => {
-            soccerStatus.timeLeft--;
-            if (soccerStatus.timeLeft <= 0) {
-                clearInterval(soccerTimer);
-                soccerStatus.isSoccer = false;
-                io.emit("announce", "サッカー終了！リザルトを確認してね");
+        gameStatus.isOnigokko = true;
+        gameStatus.frozenPages = [];
+        gameStatus.timeLeft = 180;
+
+        // ★ 鬼の割合を 30% (0.3) に設定
+        const oniCount = Math.ceil(participants.length * 0.3);
+        const shuffled = [...participants].sort(() => 0.5 - Math.random());
+        gameStatus.oniPages = shuffled.slice(0, oniCount);
+
+        io.emit("onigokko_update", gameStatus);
+
+        participants.forEach(id => {
+            io.to(id).emit("announce", "鬼ごっこ開始！");
+        });
+
+        gameTimer = setInterval(() => {
+            gameStatus.timeLeft--;
+
+            const currentParticipants = Object.keys(players).filter(id => players[id].x > 5000);
+            const nigeIds = currentParticipants.filter(id => !gameStatus.oniPages.includes(id));
+            
+            const allFrozen = nigeIds.length > 0 && nigeIds.every(id => gameStatus.frozenPages.includes(id));
+
+            if (gameStatus.timeLeft <= 0 || allFrozen) {
+                clearInterval(gameTimer);
+                gameTimer = null;
+                
+                let resultMsg = allFrozen ? "鬼の勝利！" : "逃げの勝利！";
+                
+                currentParticipants.forEach(id => {
+                    io.to(id).emit("announce", "終了！ " + resultMsg);
+                });
+
+                gameStatus.isOnigokko = false;
+                gameStatus.oniPages = [];
+                gameStatus.frozenPages = [];
+                io.emit("onigokko_update", gameStatus);
+            } else {
+                io.emit("onigokko_update", gameStatus);
             }
-            io.emit("soccer_update", soccerStatus);
         }, 1000);
     });
 
-    // --- 移動とボールの当たり判定 ---
+    // --- 当たり判定 ---
     socket.on('move', (data) => {
         if (!players[socket.id]) return;
+        if (gameStatus.frozenPages.includes(socket.id)) return;
+
         players[socket.id].x = data.x;
         players[socket.id].y = data.y;
 
-        // ボールとの接触判定
-        const dx = data.x - ball.x;
-        const dy = data.y - ball.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (gameStatus.isOnigokko && players[socket.id].x > 5000) {
+            const myId = socket.id;
+            const myX = players[myId].x;
+            const myY = players[myId].y;
 
-        if (dist < 45) {
-            // 蹴った方向へ加速
-            ball.vx = (ball.x - data.x) * 0.4;
-            ball.vy = (ball.y - data.y) * 0.4;
+            for (let targetId in players) {
+                if (myId === targetId || players[targetId].x <= 5000) continue;
+                
+                const dx = myX - players[targetId].x;
+                const dy = myY - players[targetId].y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
 
-            // 触った人の記録（自分と違う人が触ったらずらす）
-            if (ball.lastTouch !== socket.id) {
-                ball.secondLastTouch = ball.lastTouch;
-                ball.lastTouch = socket.id;
+                if (dist < 40) {
+                    const isIMoni = gameStatus.oniPages.includes(myId);
+                    const isTargetFrozen = gameStatus.frozenPages.includes(targetId);
+
+                    if (isIMoni && !gameStatus.oniPages.includes(targetId) && !isTargetFrozen) {
+                        gameStatus.frozenPages.push(targetId);
+                        io.emit("onigokko_update", gameStatus);
+                    } 
+                    else if (!isIMoni && !gameStatus.oniPages.includes(targetId) && isTargetFrozen) {
+                        gameStatus.frozenPages = gameStatus.frozenPages.filter(id => id !== targetId);
+                        io.emit("onigokko_update", gameStatus);
+                    }
+                }
             }
         }
         socket.broadcast.emit('player_moved', players[socket.id]);
@@ -94,41 +132,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- ボールの物理演算とゴール判定（サーバーで常に動かす） ---
-setInterval(() => {
-    if (!soccerStatus.isSoccer) return;
-
-    // 摩擦で減速
-    ball.vx *= 0.98;
-    ball.vy *= 0.98;
-    ball.x += ball.vx;
-    ball.y += ball.vy;
-
-    // 壁の跳ね返り
-    if (ball.x < 50 || ball.x > 1450) {
-        // ゴール判定（飛び出した部分）
-        if (ball.y > 2400 && ball.y < 2600) {
-            if (ball.x < 50) soccerStatus.score.white++;
-            else soccerStatus.score.blue++;
-
-            // 貢献度加算
-            if (soccerStatus.stats[ball.lastTouch]) soccerStatus.stats[ball.lastTouch].goals++;
-            if (soccerStatus.stats[ball.secondLastTouch]) soccerStatus.stats[ball.secondLastTouch].assists++;
-
-            // リセット
-            ball = { x: 750, y: 2500, vx: 0, vy: 0, lastTouch: null, secondLastTouch: null };
-            io.emit("announce", "GOOOAL!!");
-        } else {
-            ball.vx *= -1; // 壁跳ね返り
-            ball.x = ball.x < 50 ? 51 : 1449;
-        }
-    }
-    if (ball.y < 2050 || ball.y > 2950) {
-        ball.vy *= -1;
-        ball.y = ball.y < 2050 ? 2051 : 2949;
-    }
-
-    io.emit("ball_update", ball);
-}, 30);
-
 http.listen(3000, () => { console.log('Server is running!'); });
+
+    
