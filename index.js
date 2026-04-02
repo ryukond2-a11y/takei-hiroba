@@ -2,6 +2,10 @@ const express = require('express');
 const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http);
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const FIREBASE_URL = "https://takei-net-default-rtdb.firebaseio.com/posts.json";
+
+
 
 let players = {};
 let gameStatus = { 
@@ -16,7 +20,30 @@ app.use(express.static('public'));
 let gameTimer = null; 
 
 io.on('connection', (socket) => {
-    // 参加・自動復帰
+socket.on('send_chat', async (msg) => {
+    if (!players[socket.id]) return;
+
+    const chatData = {
+        username: players[socket.id].name, // アバター名
+        realname: null,                    // 本名はnull
+        text: msg,
+        timestamp: Date.now()
+    };
+
+    // 1. Firebaseに保存
+    try {
+        await fetch(FIREBASE_URL, {
+            method: 'POST',
+            body: JSON.stringify(chatData),
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (e) {
+        console.error("Firebase Save Error:", e);
+    }
+
+    // 2. 全員の画面に通知として表示
+    io.emit('announce', `${chatData.username}: ${msg}`);
+});
     socket.on('join', (data) => {
         const startX = (data.x !== undefined) ? data.x : 750;
         const startY = (data.y !== undefined) ? data.y : 750;
