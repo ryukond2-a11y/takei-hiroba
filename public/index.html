@@ -232,6 +232,60 @@ function updateScoreBoard() {
 }
 
 function loop() {
+// --- 追加する変数 ---
+let ball = { x: 750, y: 2500 };
+let soccerStatus = { isSoccer: false, score: { blue: 0, white: 0 }, timeLeft: 0, stats: {} };
+
+// --- socket.on の追加 ---
+socket.on("ball_update", (data) => { ball = data; });
+socket.on("soccer_update", (data) => { soccerStatus = data; });
+
+// --- draw() 関数の中に追加 ---
+function drawSoccerField() {
+    // 芝生
+    ctx.fillStyle = "#2e7d32";
+    ctx.fillRect(50, 2050, 1400, 900);
+    
+    // 白線
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(50, 2050, 1400, 900); // 外枠
+    ctx.beginPath();
+    ctx.moveTo(750, 2050); ctx.lineTo(750, 2950); // センターライン
+    ctx.stroke();
+
+    // 飛び出したゴール
+    ctx.strokeRect(0, 2400, 50, 200);   // 左ゴール
+    ctx.strokeRect(1450, 2400, 50, 200); // 右ゴール
+
+    // ボール
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, 15, 0, Math.PI * 2);
+    ctx.fillStyle = "white";
+    ctx.fill();
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // スコア表示
+    if (soccerStatus.isSoccer) {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 30px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(`BLUE ${soccerStatus.score.blue} - ${soccerStatus.score.white} WHITE`, canvas.width/2, 2100);
+        ctx.fillText(`TIME: ${soccerStatus.timeLeft}`, canvas.width/2, 2140);
+    }
+}
+
+// 足元の輪っか（描画ループのプレイヤー描画部分に入れる）
+function drawPlayerRing(p) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y + 15, 30, 0, Math.PI * 2);
+    ctx.strokeStyle = p.team === 'blue' ? 'blue' : 'white';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+}
+
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
     if (!isFrozen) {
