@@ -39,6 +39,28 @@
             background: #ff4d4d; color: white; border: none; border-radius: 5px;
             font-weight: bold; display: none; z-index: 20; pointer-events: auto;
         }
+
+/* 「チャット」ボタンの設定 */
+#chat-btn {
+    position: fixed;
+    top: 10px;
+    right: 160px; /* 鬼ごっこボタンの左側に置く（重ならないように） */
+    padding: 10px 20px;
+    background: #1d9bf0;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-weight: bold;
+    display: block; /* 常に表示 */
+    z-index: 20;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* チャットボタンだけ少し左にずらす（重なり防止） */
+#chat-btn {
+    right: 150px; /* 鬼ごっこボタンの左側に配置 */
+}
     </style>
 </head>
 <body>
@@ -68,8 +90,8 @@
         鬼: <span id="oni-total" class="oni-count">0</span>人
     </div>
 </div>
-<button id="chat-btn" class="game-btn" style="background: #1d9bf0; display:block;" onclick="openChat()">チャット</button>
-<button id="game-btn" onclick="startGame()">鬼ごっこ開始！</button>
+<button id="chat-btn" class="game-btn" onclick="openChat()">チャット</button>
+<button id="game-btn" class="game-btn" style="background: #ff4d4d; display: none;" onclick="startGame()">鬼ごっこ開始！</button>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
