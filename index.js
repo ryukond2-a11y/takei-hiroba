@@ -14,7 +14,17 @@ let gameStatus = {
     frozenPages: [],
     timeLeft: 0 
 };
+let wallOffset = 0;
+let wallDirection = 1;
 
+// サーバー側で壁の位置を計算して全員に送り続ける（30ミリ秒ごと）
+setInterval(() => {
+    wallOffset += 2 * wallDirection;
+    if (wallOffset > 400 || wallOffset < -400) wallDirection *= -1;
+    
+    // 全員に現在の壁のオフセットを送信
+    io.emit('wall_update', wallOffset);
+}, 30);
 app.use(express.static('public'));
 
 let gameTimer = null; 
