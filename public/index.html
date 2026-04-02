@@ -68,6 +68,7 @@
         鬼: <span id="oni-total" class="oni-count">0</span>人
     </div>
 </div>
+<button id="chat-btn" class="game-btn" style="background: #1d9bf0; display:block;" onclick="openChat()">チャット</button>
 <button id="game-btn" onclick="startGame()">鬼ごっこ開始！</button>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
@@ -126,6 +127,12 @@ window.onload = () => {
 function updateEditor() {
     const pixels = document.querySelectorAll(".pixel");
     myAvatar.forEach((color, i) => { if(pixels[i]) pixels[i].style.background = color; });
+}
+function openChat() {
+    const msg = prompt("みんなにメッセージを送る:");
+    if (msg && msg.trim() !== "") {
+        socket.emit("send_chat", msg);
+    }
 }
 const editor = document.getElementById("pixel-editor");
 for (let i = 0; i < 64; i++) {
