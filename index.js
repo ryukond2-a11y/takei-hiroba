@@ -74,7 +74,7 @@ socket.on('send_chat', async (msg) => {
 
         gameStatus.isOnigokko = true;
         gameStatus.frozenPages = [];
-        gameStatus.timeLeft = 180;
+        gameStatus.timeLeft = 150;
 
         // ★ 鬼の割合を 30% (0.3) に設定
         const oniCount = Math.ceil(participants.length * 0.3);
