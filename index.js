@@ -169,7 +169,6 @@ socket.on('send_chat', async (msg) => {
     });
 });
 // 壁の動きを計算する変数
-let wallOffset = 0;
 let wallDirection = 1;
 
 // 30ミリ秒ごとに壁の位置を全員に送る
