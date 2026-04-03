@@ -15,43 +15,50 @@ let gameStatus = {
 };
 let wallOffset = 0;
 let wallDirection = 1;
-let soccerScores = { red: 0, blue: 0 };
-let soccerTimer = 150;
+// サッカー専用エリアの設定
+const SOCCER_AREA = { x: 8000, y: 8000, w: 2000, h: 1200 }; 
 let isSoccerActive = false;
-let ball = { x: 750, y: 750, vx: 0, vy: 0 };
+let soccerTimer = 0;
+let soccerScores = { red: 0, blue: 0 };
+let ball = { x: 9000, y: 8600, vx: 0, vy: 0 };
 
-// --- 【修正点1】物理演算と壁の動きを1つのループに集約 ---
 setInterval(() => {
+    // 1. 動く壁の計算（既存）
     wallOffset += 2 * wallDirection;
     if (wallOffset > 400 || wallOffset < -400) wallDirection *= -1;
     io.emit('wall_update', wallOffset);
 
+    // 2. サッカーの物理演算（追加）
     if (isSoccerActive) {
         ball.vx *= 0.98; ball.vy *= 0.98; // 摩擦
         ball.x += ball.vx; ball.y += ball.vy;
 
-        if (ball.x < 20 || ball.x > 1480) { ball.vx *= -1; ball.x = (ball.x < 20) ? 20 : 1480; }
-        if (ball.y < 20 || ball.y > 1480) { ball.vy *= -1; ball.y = (ball.y < 20) ? 20 : 1480; }
+        // 壁での跳ね返り
+        if (ball.x < SOCCER_AREA.x + 20 || ball.x > SOCCER_AREA.x + 1980) ball.vx *= -1;
+        if (ball.y < SOCCER_AREA.y + 20 || ball.y > SOCCER_AREA.y + 1180) ball.vy *= -1;
 
-        if (ball.x > 600 && ball.x < 900) {
-            if (ball.y <= 25) { soccerScores.blue++; ball = {x:750, y:750, vx:0, vy:0}; io.emit('announce', "青チーム得点！"); }
-            if (ball.y >= 1475) { soccerScores.red++; ball = {x:750, y:750, vx:0, vy:0}; io.emit('announce', "赤チーム得点！"); }
+        // ゴール判定
+        if (ball.y > SOCCER_AREA.y + 400 && ball.y < SOCCER_AREA.y + 800) {
+            if (ball.x < SOCCER_AREA.x + 40) { // 青の得点
+                soccerScores.blue++;
+                resetBall();
+                io.emit('announce', "青チーム得点！");
+            } else if (ball.x > SOCCER_AREA.x + 1960) { // 赤の得点
+                soccerScores.red++;
+                resetBall();
+                io.emit('announce', "赤チーム得点！");
+            }
         }
     }
     io.emit('soccer_update', { ball, scores: soccerScores, timer: soccerTimer, active: isSoccerActive });
 }, 30);
 
-// --- 【修正点2】サッカーの1秒ごとカウントダウンタイマーを追加 ---
-setInterval(() => {
-    if (isSoccerActive && soccerTimer > 0) {
-        soccerTimer--;
-        if (soccerTimer <= 0) {
-            isSoccerActive = false;
-            io.emit('announce', `試合終了！ 赤:${soccerScores.red} - 青:${soccerScores.blue}`);
-        }
-    }
-}, 1000);
+// この関数も setInterval のすぐ下あたりに追加
+function resetBall() { ball = { x: 9000, y: 8600, vx: 0, vy: 0 }; }
 
+
+
+function resetBall() { ball = { x: 9000, y: 8600, vx: 0, vy: 0 }; }
 gateRoutes(app);
 app.use(requireAccess, express.static('public'));
 
@@ -143,34 +150,65 @@ io.on('connection', (socket) => {
             }
         }, 1000);
     });
+// ボールを蹴るイベント
+socket.on('kick_ball', (data) => {
+    if (!isSoccerActive) return;
+    // 蹴った方向(vx, vy)をボールに加える
+    ball.vx = data.vx;
+    ball.vy = data.vy;
+});
+ socket.on('move', (data) => {
+    if (!players[socket.id]) return;
+    
+    // 凍結されているプレイヤーは動けない（鬼ごっこのルール）
+    if (gameStatus.frozenPages.includes(socket.id)) return;
 
-    socket.on('move', (data) => {
-        if (!players[socket.id]) return;
-        if (gameStatus.frozenPages.includes(socket.id)) return;
-        players[socket.id].x = data.x;
-        players[socket.id].y = data.y;
+    players[socket.id].x = data.x;
+    players[socket.id].y = data.y;
 
-        if (gameStatus.isOnigokko && players[socket.id].x > 5000) {
-            const myId = socket.id;
-            for (let targetId in players) {
-                if (myId === targetId || players[targetId].x <= 5000) continue;
-                const dx = players[myId].x - players[targetId].x;
-                const dy = players[myId].y - players[targetId].y;
-                if (Math.sqrt(dx*dx + dy*dy) < 40) {
-                    const isIMoni = gameStatus.oniPages.includes(myId);
-                    const isTargetFrozen = gameStatus.frozenPages.includes(targetId);
-                    if (isIMoni && !gameStatus.oniPages.includes(targetId) && !isTargetFrozen) {
-                        gameStatus.frozenPages.push(targetId);
-                    } else if (!isIMoni && !gameStatus.oniPages.includes(targetId) && isTargetFrozen) {
-                        gameStatus.frozenPages = gameStatus.frozenPages.filter(id => id !== targetId);
-                    }
-                    io.emit("onigokko_update", gameStatus);
+    // --- 【追加】サッカーのチーム分けロジック ---
+    if (data.x > 7500) { // サッカー場エリアにいる場合
+        if (!players[socket.id].team) {
+            const pArray = Object.values(players).filter(p => p.x > 7500 && p.team);
+            const redC = pArray.filter(p => p.team === 'red').length;
+            const blueC = pArray.filter(p => p.team === 'blue').length;
+            players[socket.id].team = (redC <= blueC) ? 'red' : 'blue';
+            socket.emit('announce', `あなたは ${players[socket.id].team === 'red' ? '赤' : '青'} チーム！`);
+        }
+    } else {
+        players[socket.id].team = null; // エリア外なら解除
+    }
+
+    // --- 【既存】鬼ごっこの接触判定ロジック ---
+    if (gameStatus.isOnigokko && players[socket.id].x > 5000) {
+        const myId = socket.id;
+        for (let targetId in players) {
+            // 自分自身、または鬼ごっこエリア(x > 5000)外の人は無視
+            if (myId === targetId || players[targetId].x <= 5000) continue;
+
+            const dx = players[myId].x - players[targetId].x;
+            const dy = players[myId].y - players[targetId].y;
+
+            if (Math.sqrt(dx*dx + dy*dy) < 40) { // 接触した
+                const isIMoni = gameStatus.oniPages.includes(myId);
+                const isTargetFrozen = gameStatus.frozenPages.includes(targetId);
+
+                // 自分が鬼で、相手が逃げ（かつ凍っていない）なら凍らせる
+                if (isIMoni && !gameStatus.oniPages.includes(targetId) && !isTargetFrozen) {
+                    gameStatus.frozenPages.push(targetId);
+                } 
+                // 自分が鬼でなく、相手が凍っているなら助ける
+                else if (!isIMoni && !gameStatus.oniPages.includes(targetId) && isTargetFrozen) {
+                    gameStatus.frozenPages = gameStatus.frozenPages.filter(id => id !== targetId);
                 }
+                io.emit("onigokko_update", gameStatus);
             }
         }
-        socket.broadcast.emit('player_moved', players[socket.id]);
-    });
+    }
 
+    // 全員に位置を同期
+    socket.broadcast.emit('player_moved', players[socket.id]);
+});
     socket.on('disconnect', () => {
         delete players[socket.id];
         io.emit('update_all', players);
