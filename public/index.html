@@ -115,7 +115,10 @@ const socket = io({
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000
 });
-
+let currentWallOffset = 0; // サーバーから受け取る用
+socket.on('wall_update', (offset) => {
+    currentWallOffset = offset;
+});
 // ★このブロックを新しく追加（socketのすぐ下でOK）
 socket.on('connect', () => {
     if (isJoined) {
@@ -263,29 +266,47 @@ function updateScoreBoard() {
 function loop() {
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
+    
     if (!isFrozen) {
-        let nx = myPos.x + velocity.x, ny = myPos.y + velocity.y;
+        let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
         if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
         if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
-        if (nx > 30 && nx < 6500) {
+
+        // --- 動く壁との当たり判定（移動を確定させる前にチェック） ---
+        const walls = [
+            { x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 }, 
+            { x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
+        ];
+
+        let canMove = true;
+        walls.forEach(w => {
+            // 自分のサイズ(20px程度)を考慮した判定
+            if (nx + 15 > w.x && nx - 15 < w.x + w.w &&
+                ny + 15 > w.y && ny - 15 < w.y + w.h) {
+                canMove = false; 
+            }
+        });
+
+        // 壁にぶつかっていない場合のみ、座標を更新
+        if (canMove && nx > 30 && nx < 6500) {
             if ((nx < 1500 && ny > 0 && ny < 1500) || (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500)) {
                 myPos.x = nx; myPos.y = ny;
             }
         }
         socket.emit("move", { x: myPos.x, y: myPos.y });
-       
-// 行き（右側へ）
-if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
-    playWarpSound();
-    myPos.x = 5100; myPos.y = 5750;
-}
-// 戻り（左側へ）
-if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
-    playWarpSound();
-    myPos.x = 750; myPos.y = 750;
-}
+
+        // 行き（右側へ）
+        if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
+            playWarpSound();
+            myPos.x = 5100; myPos.y = 5750;
+        }
+        // 戻り（左側へ）
+        if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
+            playWarpSound();
+            myPos.x = 750; myPos.y = 750;
+        }
     }
-　
+
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(scale, scale); ctx.translate(-myPos.x, -myPos.y);
@@ -299,6 +320,14 @@ if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
     drawFloor(0, 0); drawFloor(5000, 5000);
     ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100); // 行き
     ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100); // 戻り
+
+    // --- 同期された壁を実際に描画 ---
+    const drawWalls = [
+        { x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 },
+        { x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
+    ];
+    ctx.fillStyle = "#ffcc00"; // 警告色っぽく
+    drawWalls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
     for (let id in players) {
         const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
