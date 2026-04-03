@@ -274,19 +274,19 @@ function updateScoreBoard() {
 function loop() {
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
-// --- 修正：広場(下)からサッカー場(上)へ ---
+// --- 修正：広場からサッカー場へ ---
 if (myPos.y > 1480 && myPos.x > 600 && myPos.x < 900) {
     playWarpSound();
-    myPos.x = 750; 
-    myPos.y = 150; // 100から150にちょっとずらす
-    socket.emit("announce", `${players[socket.id].name}がサッカー参戦！`);
+    myPos.x = 2250; // サッカー場の真ん中(1500+750)
+    myPos.y = 150;  // 上の方にスポーン
+    socket.emit("announce", `${players[socket.id].name}がサッカー場に入場！`);
 }
 
-// --- 修正：サッカー場(上)から広場(下)へ ---
-if (myPos.y < 20 && myPos.x > 600 && myPos.x < 900) {
+// --- 修正：サッカー場から広場へ ---
+if (myPos.y < 20 && myPos.x > 2100 && myPos.x < 2400) {
     playWarpSound();
     myPos.x = 750; 
-    myPos.y = 1350; // 1500付近ではなく1350に飛ばす
+    myPos.y = 1350;
 }
     if (!isFrozen) {
         let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
@@ -310,10 +310,13 @@ if (myPos.y < 20 && myPos.x > 600 && myPos.x < 900) {
 
         // 壁にぶつかっていない場合のみ、座標を更新
         if (canMove && nx > 30 && nx < 6500) {
-            if ((nx < 1500 && ny > 0 && ny < 1500) || (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500)) {
-                myPos.x = nx; myPos.y = ny;
-            }
-        }
+    // 広場 or 鬼ごっこ場 or サッカー場(1500〜3000) のどこかにいればOK
+    if ((nx < 1500 && ny > 0 && ny < 1500) || 
+        (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) ||
+        (nx > 1500 && nx < 3000)) { // ここを追加！
+        myPos.x = nx; myPos.y = ny;
+    }
+}
         socket.emit("move", { x: myPos.x, y: myPos.y });
 // --- 追加：ボールを蹴る判定 (サッカー場 0~1500 エリアにいる時のみ) ---
 if (myPos.x < 1500 && myPos.y < 1500) {
