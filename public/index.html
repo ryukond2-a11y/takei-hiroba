@@ -535,30 +535,26 @@ const isFrozen = gameStatus.frozenPages.includes(socket.id);
 
 // --- 追加：サッカー場へのワープ（広場の下端 1450付近） ---
 
-if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450 && myPos.y < 1500) {
+// --- loop関数の中にあるワープ判定を探して書き換え ---
 
-playWarpSound();
+// 【修正前】
+// if (ゲートに触れたら) { myPos.y = 0; } // みたいな書き方になってるはず
 
-myPos.x = 750; myPos.y = 100; // サッカー場の北側（上の方）にスポーン
-
-socket.emit("announce", `${players[socket.id].name}がサッカー場に入場！`);
-
+// 【修正後】
+// 広場の南端（y > 1450）にあるゲートに触れたら、サッカー場（8000番台）へ飛ばす
+if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450) {
+    playWarpSound(); // もし音の関数があれば
+    myPos.x = 9000;  // サッカーコートの横幅中央
+    myPos.y = 8100;  // サッカーコートの上側（入り口）
 }
 
-
-
-// 逆にサッカー場から戻る判定（サッカー場の下端から広場へ）
-
-if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450 && myPos.y < 1500 && myPos.x < 1500) {
-
-// サッカー場にいる時だけ判定
-
-playWarpSound();
-
-myPos.x = 750; myPos.y = 1350; // 広場の下の方に戻る
-
+// 【追加】サッカー場から広場に戻るためのゲートも作っておこう
+// サッカー場の北端（y < 8050）に触れたら、広場（750, 1350）へ戻す
+if (myPos.x > 8000 && myPos.x < 10000 && myPos.y < 8050) {
+    playWarpSound();
+    myPos.x = 750;   // 広場の中央
+    myPos.y = 1350;  // 広場の南側（ゲートの前）に戻る
 }
-
 
 
 if (!isFrozen) {
