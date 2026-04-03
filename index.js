@@ -168,8 +168,6 @@ socket.on('send_chat', async (msg) => {
         io.emit('update_all', players);
     });
 });
-// 壁の動きを計算する変数
-let wallDirection = 1;
 
 // 30ミリ秒ごとに壁の位置を全員に送る
 setInterval(() => {
