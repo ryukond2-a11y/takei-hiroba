@@ -282,42 +282,30 @@ function loop() {
         if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
 
         let canMove = false;
-        // 広場エリア
         if (nx > 0 && nx < 1500 && ny > 0 && ny < 1500) canMove = true;
-        // 鬼ごっこエリア
         if (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) canMove = true;
-        // サッカーエリア (x: 2000〜3500)
         if (nx > 2000 && nx < 3500 && ny > 0 && ny < 1500) canMove = true;
 
         if (canMove) { myPos.x = nx; myPos.y = ny; }
 
         // --- 2. ワープ判定 ---
-        // 広場(下) -> サッカー場(2750, 100)
-        if (myPos.y > 1450 && myPos.x > 600 && myPos.x < 900) {
-            playWarpSound(); myPos.x = 2750; myPos.y = 100;
-        }
-        // サッカー場(上) -> 広場(750, 1350)
-        if (myPos.x > 2600 && myPos.x < 2900 && myPos.y < 50) {
-            playWarpSound(); myPos.x = 750; myPos.y = 1350;
-        }
-        // 広場(右) -> 鬼ごっこ場
-        if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
-            playWarpSound(); myPos.x = 5100; myPos.y = 5750;
-        }
-        // 鬼ごっこ場 -> 広場
-        if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
-            playWarpSound(); myPos.x = 1350; myPos.y = 750;
-        }
+        if (myPos.y > 1450 && myPos.x > 600 && myPos.x < 900) { playWarpSound(); myPos.x = 2750; myPos.y = 100; }
+        if (myPos.x > 2600 && myPos.x < 2900 && myPos.y < 50) { playWarpSound(); myPos.x = 750; myPos.y = 1350; }
+        // 鬼ごっこ場へ (広場の右端)
+        if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) { playWarpSound(); myPos.x = 5100; myPos.y = 5750; }
+        // 広場へ戻る (鬼ごっこ場の左端)
+        if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) { playWarpSound(); myPos.x = 1350; myPos.y = 750; }
 
         socket.emit("move", { x: myPos.x, y: myPos.y });
 
         // --- 3. サッカーのボール蹴り判定 ---
-        if (myPos.x > 2000 && myPos.x < 3500) {
+        // ボールがサッカー場(x:2000-3500)にある時だけ判定
+        if (soccerData.ball.x > 2000 && soccerData.ball.x < 3500) {
             const dx = myPos.x - soccerData.ball.x, dy = myPos.y - soccerData.ball.y;
             if (Math.sqrt(dx*dx + dy*dy) < 40) {
                 socket.emit('kick_ball', {
-                    vx: (keys["a"] ? -12 : keys["d"] ? 12 : 0),
-                    vy: (keys["w"] ? -12 : keys["s"] ? 12 : 0)
+                    vx: (keys["a"] ? -12 : keys["d"] ? 12 : 0 || velocity.x * 2),
+                    vy: (keys["w"] ? -12 : keys["s"] ? 12 : 0 || velocity.y * 2)
                 });
             }
         }
@@ -328,34 +316,40 @@ function loop() {
     ctx.save();
     ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(scale, scale); ctx.translate(-myPos.x, -myPos.y);
 
-    const drawFloor = (x, y, color) => {
-        ctx.fillStyle = color; ctx.fillRect(x, y, 1500, 1500);
+    const drawFloor = (x, y, w, h, color) => {
+        ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        for(let i=0; i<=1500; i+=100) { ctx.strokeRect(x, y+i, 1500, 1); ctx.strokeRect(x+i, y, 1, 1500); }
+        for(let i=0; i<=w; i+=100) { ctx.beginPath(); ctx.moveTo(x+i, y); ctx.lineTo(x+i, y+h); ctx.stroke(); }
+        for(let i=0; i<=h; i+=100) { ctx.beginPath(); ctx.moveTo(x, y+i); ctx.lineTo(x+w, y+i); ctx.stroke(); }
     };
 
-    drawFloor(0, 0, "#3e6b3e");      // 広場
-    drawFloor(5000, 5000, "#3e6b3e"); // 鬼ごっこ
-    
-    // サッカー場描画 (x: 2000〜3500)
-    ctx.fillStyle = "#2ecc71"; ctx.fillRect(2000, 0, 1500, 1500); // 芝生
+    drawFloor(0, 0, 1500, 1500, "#3e6b3e");      // 広場
+    drawFloor(5000, 5000, 1500, 1500, "#3e6b3e"); // 鬼ごっこ
+    drawFloor(2000, 0, 1500, 1500, "#2ecc71");    // サッカー場 (芝生色)
+
+    // サッカー場のライン
     ctx.strokeStyle = "white"; ctx.lineWidth = 5;
-    ctx.strokeRect(2100, 100, 1300, 1300); // コート外枠
-    ctx.beginPath(); ctx.moveTo(2000, 750); ctx.lineTo(3500, 750); ctx.stroke(); // センターライン
+    ctx.strokeRect(2100, 100, 1300, 1300); // 外枠
+    ctx.beginPath(); ctx.moveTo(2750, 100); ctx.lineTo(2750, 1400); ctx.stroke(); // センターライン(縦)
     ctx.beginPath(); ctx.arc(2750, 750, 150, 0, Math.PI*2); ctx.stroke(); // センターサークル
-    
-    // ゴールエリア描画
-    ctx.fillStyle = "rgba(255, 0, 0, 0.3)"; ctx.fillRect(2600, 100, 300, 80); // 赤
-    ctx.fillStyle = "rgba(0, 0, 255, 0.3)"; ctx.fillRect(2600, 1320, 300, 80); // 青
 
-    // ゲート描画
-    ctx.fillStyle = "yellow"; ctx.fillRect(600, 1480, 300, 20); // 広場の出口
-    ctx.fillRect(2600, 0, 300, 20); // サッカー場の出口
+    // ゴール
+    ctx.fillStyle = "rgba(255, 0, 0, 0.3)"; ctx.fillRect(2050, 600, 50, 300); // 赤ゴール(左)
+    ctx.fillStyle = "rgba(0, 0, 255, 0.3)"; ctx.fillRect(3400, 600, 50, 300); // 青ゴール(右)
 
-    // ボールの描画
-    ctx.fillStyle = "white"; ctx.strokeStyle = "black"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI*2);
-    ctx.fill(); ctx.stroke();
+    // --- ゲートの描画 ---
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(600, 1480, 300, 20);   // 広場下 -> サッカー場
+    ctx.fillRect(1480, 700, 20, 100);   // 広場右 -> 鬼ごっこ場 (これ追加！)
+    ctx.fillRect(2600, 0, 300, 20);     // サッカー場上 -> 広場
+    ctx.fillRect(5000, 5700, 20, 100);  // 鬼ごっこ場左 -> 広場 (これ追加！)
+
+    // ボールの描画 (サッカー場にいる時だけ表示)
+    if (soccerData.ball.x > 1800) { 
+        ctx.fillStyle = "white"; ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI*2);
+        ctx.fill(); ctx.stroke();
+    }
 
     // プレイヤー描画
     for (let id in players) {
@@ -385,12 +379,10 @@ function loop() {
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; ctx.fillRect(canvas.width / 2 - 160, 10, 320, 60);
         ctx.fillStyle = "white"; ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center";
         ctx.fillText(`赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青`, canvas.width / 2, 38);
-        ctx.font = "16px sans-serif";
-        ctx.fillText(`試合時間: ${soccerData.timer}秒`, canvas.width / 2, 62);
+        ctx.font = "16px sans-serif"; ctx.fillText(`試合時間: ${soccerData.timer}秒`, canvas.width / 2, 62);
         ctx.restore();
     }
 
-    // ボタンの出し分け
     const sBtn = document.getElementById("soccer-btn");
     const gBtn = document.getElementById("game-btn");
     if (gBtn) gBtn.style.display = (myPos.x > 5000) ? "block" : "none";
@@ -398,7 +390,6 @@ function loop() {
 
     requestAnimationFrame(loop);
 }
-
 function startGame() { socket.emit("start_onigokko"); }
 </script>
 </body>
