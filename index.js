@@ -17,15 +17,36 @@ let gameStatus = {
 };
 let wallOffset = 0;
 let wallDirection = 1;
+let soccerScores = { red: 0, blue: 0 };
+let soccerTimer = 150;
+let isSoccerActive = false;
+let ball = { x: 750, y: 750, vx: 0, vy: 0 };
 
-// サーバー側で壁の位置を計算して全員に送り続ける（30ミリ秒ごと）
+
 setInterval(() => {
+    // --- 既存の壁の動き ---
     wallOffset += 2 * wallDirection;
     if (wallOffset > 400 || wallOffset < -400) wallDirection *= -1;
-    
-    // 全員に現在の壁のオフセットを送信
     io.emit('wall_update', wallOffset);
+
+    // --- 【追加】ボールの計算 ---
+    if (isSoccerActive) {
+        ball.vx *= 0.98; ball.vy *= 0.98; // 摩擦
+        ball.x += ball.vx; ball.y += ball.vy;
+
+        // 壁での跳ね返り
+        if (ball.x < 20 || ball.x > 1480) { ball.vx *= -1; ball.x = (ball.x < 20) ? 20 : 1480; }
+        if (ball.y < 20 || ball.y > 1480) { ball.vy *= -1; ball.y = (ball.y < 20) ? 20 : 1480; }
+
+        // ゴール判定
+        if (ball.x > 600 && ball.x < 900) {
+            if (ball.y <= 25) { soccerScores.blue++; ball = {x:750, y:750, vx:0, vy:0}; io.emit('announce', "青チーム得点！"); }
+            if (ball.y >= 1475) { soccerScores.red++; ball = {x:750, y:750, vx:0, vy:0}; io.emit('announce', "赤チーム得点！"); }
+        }
+    }
+    io.emit('soccer_update', { ball, scores: soccerScores, timer: soccerTimer, active: isSoccerActive });
 }, 30);
+
 gateRoutes(app);
 app.use(requireAccess, express.static('public'));
 
@@ -35,6 +56,18 @@ let gameTimer = null;
 io.on('connection', (socket) => {
 socket.on('send_chat', async (msg) => {
     if (!players[socket.id]) return;
+// joinの中か外に追加
+socket.on('kick_ball', (data) => {
+    ball.vx = data.vx;
+    ball.vy = data.vy;
+});
+
+socket.on('start_soccer', () => {
+    soccerScores = { red: 0, blue: 0 };
+    soccerTimer = 150;
+    isSoccerActive = true;
+    io.emit('announce', "サッカー開始！");
+});
 
     const chatData = {
         username: players[socket.id].name, // アバター名
