@@ -168,7 +168,18 @@ socket.on('send_chat', async (msg) => {
         io.emit('update_all', players);
     });
 });
+// 壁の動きを計算する変数
+let wallOffset = 0;
+let wallDirection = 1;
 
+// 30ミリ秒ごとに壁の位置を全員に送る
+setInterval(() => {
+    wallOffset += 2 * wallDirection;
+    if (wallOffset > 400 || wallOffset < -400) wallDirection *= -1;
+    
+    // 全員に現在の位置を送信
+    io.emit('wall_update', wallOffset);
+}, 30);
 http.listen(3000, () => { console.log('Server is running!'); });
 
     
