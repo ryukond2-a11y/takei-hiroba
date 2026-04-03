@@ -274,148 +274,98 @@ function updateScoreBoard() {
 function loop() {
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
-// --- 修正：広場からサッカー場へ ---
-if (myPos.y > 1480 && myPos.x > 600 && myPos.x < 900) {
-    playWarpSound();
-    myPos.x = 2250; // サッカー場の真ん中(1500+750)
-    myPos.y = 150;  // 上の方にスポーン
-    socket.emit("announce", `${players[socket.id].name}がサッカー場に入場！`);
-}
 
-// --- 修正：サッカー場から広場へ ---
-if (myPos.y < 20 && myPos.x > 2100 && myPos.x < 2400) {
-    playWarpSound();
-    myPos.x = 750; 
-    myPos.y = 1350;
-}
+    // --- 1. 移動処理 ---
     if (!isFrozen) {
         let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
         if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
         if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
 
-        // --- 動く壁との当たり判定（移動を確定させる前にチェック） ---
-        const walls = [
-            { x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 }, 
-            { x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
-        ];
+        let canMove = false;
+        // 広場エリア
+        if (nx > 0 && nx < 1500 && ny > 0 && ny < 1500) canMove = true;
+        // 鬼ごっこエリア
+        if (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) canMove = true;
+        // サッカーエリア (x: 2000〜3500)
+        if (nx > 2000 && nx < 3500 && ny > 0 && ny < 1500) canMove = true;
 
-        let canMove = true;
-        walls.forEach(w => {
-            // 自分のサイズ(20px程度)を考慮した判定
-            if (nx + 15 > w.x && nx - 15 < w.x + w.w &&
-                ny + 15 > w.y && ny - 15 < w.y + w.h) {
-                canMove = false; 
-            }
-        });
+        if (canMove) { myPos.x = nx; myPos.y = ny; }
 
-        // 壁にぶつかっていない場合のみ、座標を更新
-        if (canMove && nx > 30 && nx < 6500) {
-    // 広場 or 鬼ごっこ場 or サッカー場(1500〜3000) のどこかにいればOK
-    if ((nx < 1500 && ny > 0 && ny < 1500) || 
-        (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) ||
-        (nx > 1500 && nx < 3000)) { // ここを追加！
-        myPos.x = nx; myPos.y = ny;
-    }
-}
-        socket.emit("move", { x: myPos.x, y: myPos.y });
-// --- 追加：ボールを蹴る判定 (サッカー場 0~1500 エリアにいる時のみ) ---
-if (myPos.x < 1500 && myPos.y < 1500) {
-    // サーバーから送られてくるボールの座標(soccerData.ball)との距離を測る
-    const dx = myPos.x - soccerData.ball.x;
-    const dy = myPos.y - soccerData.ball.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance < 35) { // プレイヤーとボールが接触（半径の合計くらい）
-        // 自分の動いている方向にボールを飛ばす
-        socket.emit('kick_ball', {
-            vx: (keys["a"] ? -12 : keys["d"] ? 12 : 0),
-            vy: (keys["w"] ? -12 : keys["s"] ? 12 : 0)
-        });
-    }
-}
-
-// --- 追加：ボールの描画 ---
-// 芝生を描いた後、プレイヤーを描く前に入れるのがベスト
-ctx.fillStyle = "white";
-ctx.strokeStyle = "black";
-ctx.lineWidth = 2;
-ctx.beginPath();
-ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI * 2); // 半径15の円
-ctx.fill();
-ctx.stroke();
-// --- 追加：UI（スコア・タイマー）の表示 ---
-ctx.save();
-ctx.setTransform(1, 0, 0, 1, 0, 0); // カメラの影響を受けないようにリセット
-
-ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-ctx.fillRect(canvas.width / 2 - 160, 10, 320, 50); // 黒い背景枠
-
-ctx.fillStyle = "white";
-ctx.font = "bold 22px sans-serif";
-ctx.textAlign = "center";
-ctx.fillText(
-    `赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青 | 残り ${soccerData.timer}秒`, 
-    canvas.width / 2, 42
-);
-
-ctx.restore();
-
-        // 行き（右側へ）
+        // --- 2. ワープ判定 ---
+        // 広場(下) -> サッカー場(2750, 100)
+        if (myPos.y > 1450 && myPos.x > 600 && myPos.x < 900) {
+            playWarpSound(); myPos.x = 2750; myPos.y = 100;
+        }
+        // サッカー場(上) -> 広場(750, 1350)
+        if (myPos.x > 2600 && myPos.x < 2900 && myPos.y < 50) {
+            playWarpSound(); myPos.x = 750; myPos.y = 1350;
+        }
+        // 広場(右) -> 鬼ごっこ場
         if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
-            playWarpSound();
-            myPos.x = 5100; myPos.y = 5750;
+            playWarpSound(); myPos.x = 5100; myPos.y = 5750;
         }
-        // 戻り（左側へ）
+        // 鬼ごっこ場 -> 広場
         if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
-            playWarpSound();
-            myPos.x = 750; myPos.y = 750;
+            playWarpSound(); myPos.x = 1350; myPos.y = 750;
+        }
+
+        socket.emit("move", { x: myPos.x, y: myPos.y });
+
+        // --- 3. サッカーのボール蹴り判定 ---
+        if (myPos.x > 2000 && myPos.x < 3500) {
+            const dx = myPos.x - soccerData.ball.x, dy = myPos.y - soccerData.ball.y;
+            if (Math.sqrt(dx*dx + dy*dy) < 40) {
+                socket.emit('kick_ball', {
+                    vx: (keys["a"] ? -12 : keys["d"] ? 12 : 0),
+                    vy: (keys["w"] ? -12 : keys["s"] ? 12 : 0)
+                });
+            }
         }
     }
 
+    // --- 4. 描画開始 ---
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(scale, scale); ctx.translate(-myPos.x, -myPos.y);
 
-    // 床描画
-    const drawFloor = (x, y) => {
-        ctx.fillStyle = "#3e6b3e"; ctx.fillRect(x, y, 1500, 1500);
+    const drawFloor = (x, y, color) => {
+        ctx.fillStyle = color; ctx.fillRect(x, y, 1500, 1500);
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        for(let i=0; i<=1500; i+=50) { for(let j=0; j<=1500; j+=25) { ctx.strokeRect(x+i+(j%50==0?0:25), y+j, 50, 25); } }
+        for(let i=0; i<=1500; i+=100) { ctx.strokeRect(x, y+i, 1500, 1); ctx.strokeRect(x+i, y, 1, 1500); }
     };
-    drawFloor(0, 0); drawFloor(5000, 5000);
-    ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100); // 行き
-    ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100); // 戻り
-// loop内の drawFloor(0, 0); のすぐ下あたりに追加
-if (myPos.x < 1500 && myPos.y < 1500) {
-    // 広場の下側に黄色いライン（入り口）を引く
-    ctx.fillStyle = "yellow";
-    ctx.fillRect(600, 1480, 300, 20);
-    ctx.fillStyle = "white";
-    ctx.font = "bold 20px sans-serif";
-    ctx.fillText("サッカー場 (下へ)", 750, 1460);
-}
 
-    // --- 同期された壁を実際に描画 ---
-    const drawWalls = [
-        { x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 },
-        { x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
-    ];
-    ctx.fillStyle = "#ffcc00"; // 警告色っぽく
-    drawWalls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+    drawFloor(0, 0, "#3e6b3e");      // 広場
+    drawFloor(5000, 5000, "#3e6b3e"); // 鬼ごっこ
+    
+    // サッカー場描画 (x: 2000〜3500)
+    ctx.fillStyle = "#2ecc71"; ctx.fillRect(2000, 0, 1500, 1500); // 芝生
+    ctx.strokeStyle = "white"; ctx.lineWidth = 5;
+    ctx.strokeRect(2100, 100, 1300, 1300); // コート外枠
+    ctx.beginPath(); ctx.moveTo(2000, 750); ctx.lineTo(3500, 750); ctx.stroke(); // センターライン
+    ctx.beginPath(); ctx.arc(2750, 750, 150, 0, Math.PI*2); ctx.stroke(); // センターサークル
+    
+    // ゴールエリア描画
+    ctx.fillStyle = "rgba(255, 0, 0, 0.3)"; ctx.fillRect(2600, 100, 300, 80); // 赤
+    ctx.fillStyle = "rgba(0, 0, 255, 0.3)"; ctx.fillRect(2600, 1320, 300, 80); // 青
 
+    // ゲート描画
+    ctx.fillStyle = "yellow"; ctx.fillRect(600, 1480, 300, 20); // 広場の出口
+    ctx.fillRect(2600, 0, 300, 20); // サッカー場の出口
+
+    // ボールの描画
+    ctx.fillStyle = "white"; ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+
+    // プレイヤー描画
     for (let id in players) {
         const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
         const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
         ctx.save();
-        if (p.team === 'red') {
-        ctx.strokeStyle = "red";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x - 22, y - 22, 44, 44);
-    } else if (p.team === 'blue') {
-        ctx.strokeStyle = "#1d9bf0";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x - 22, y - 22, 44, 44);
-    }
+        if (p.team) {
+            ctx.strokeStyle = p.team === 'red' ? "red" : "#1d9bf0";
+            ctx.lineWidth = 4; ctx.strokeRect(x - 25, y - 25, 50, 50);
+        }
         if (isF) ctx.globalAlpha = 0.5;
         for (let i = 0; i < 64; i++) {
             if (p.avatar[i] === "#555") continue;
@@ -424,23 +374,30 @@ if (myPos.x < 1500 && myPos.y < 1500) {
         }
         if (isOni) { ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke(); }
         ctx.restore();
-        ctx.fillStyle = isOni ? "#ff4d4d" : "white"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+        ctx.fillStyle = "white"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
         ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
     }
-    // --- ここから書き換え ---
     ctx.restore();
+
+    // --- 5. UI（スコア・タイマー） ---
+    if (myPos.x > 2000 && myPos.x < 3500) {
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; ctx.fillRect(canvas.width / 2 - 160, 10, 320, 60);
+        ctx.fillStyle = "white"; ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText(`赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青`, canvas.width / 2, 38);
+        ctx.font = "16px sans-serif";
+        ctx.fillText(`試合時間: ${soccerData.timer}秒`, canvas.width / 2, 62);
+        ctx.restore();
+    }
 
     // ボタンの出し分け
     const sBtn = document.getElementById("soccer-btn");
     const gBtn = document.getElementById("game-btn");
-
-    // 鬼ごっこエリア（右下の島）にいたら鬼ごっこボタンを表示
     if (gBtn) gBtn.style.display = (myPos.x > 5000) ? "block" : "none";
-
-    // サッカーエリア（左上の島）にいて、試合が始まっていないならサッカーボタンを表示
-    if (sBtn) sBtn.style.display = (myPos.x < 1500 && !soccerData.active) ? "block" : "none";
+    if (sBtn) sBtn.style.display = (myPos.x > 2000 && myPos.x < 3500 && !soccerData.active) ? "block" : "none";
 
     requestAnimationFrame(loop);
+}
 } // loop関数の終わり
 
 function startGame() { socket.emit("start_onigokko"); }
