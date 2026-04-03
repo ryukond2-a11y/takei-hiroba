@@ -4,6 +4,7 @@ const http = require('http').Server(app);
 const io = require('socket.io')(http);
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const FIREBASE_URL = "https://takei-net-default-rtdb.firebaseio.com/posts.json";
+const { requireAccess, gateRoutes } = require('./gate'); 
 
 
 
@@ -25,7 +26,9 @@ setInterval(() => {
     // 全員に現在の壁のオフセットを送信
     io.emit('wall_update', wallOffset);
 }, 30);
-app.use(express.static('public'));
+gateRoutes(app);
+app.use(requireAccess, express.static('public'));
+
 
 let gameTimer = null; 
 
