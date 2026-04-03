@@ -92,6 +92,7 @@
 </div>
 <button id="chat-btn" class="game-btn" onclick="openChat()">チャット</button>
 <button id="game-btn" class="game-btn" style="background: #ff4d4d; display: none;" onclick="startGame()">鬼ごっこ開始！</button>
+<button id="soccer-btn" style="position:fixed; top:10px; right:10px; padding:10px 20px; background:#2ecc71; color:white; border:none; border-radius:5px; font-weight:bold; display:none; z-index:20;" onclick="socket.emit('start_soccer')">サッカー開始！</button>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -118,6 +119,11 @@ const socket = io({
 let currentWallOffset = 0; // サーバーから受け取る用
 socket.on('wall_update', (offset) => {
     currentWallOffset = offset;
+});
+// 追加：チーム割り当てを受け取った時に表示を更新
+socket.on('assign_team', (team) => {
+    const teamName = (team === 'red' ? '赤' : '青');
+    document.getElementById("status").innerText += ` [${teamName}チーム]`;
 });
 // ★このブロックを新しく追加（socketのすぐ下でOK）
 socket.on('connect', () => {
@@ -268,20 +274,20 @@ function updateScoreBoard() {
 function loop() {
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
-    // --- 追加：サッカー場へのワープ（広場の下端 1450付近） ---
-if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450 && myPos.y < 1500) {
+// --- 修正：広場(下)からサッカー場(上)へ ---
+if (myPos.y > 1480 && myPos.x > 600 && myPos.x < 900) {
     playWarpSound();
-    myPos.x = 750; myPos.y = 100; // サッカー場の北側（上の方）にスポーン
-    socket.emit("announce", `${players[socket.id].name}がサッカー場に入場！`);
+    myPos.x = 750; 
+    myPos.y = 150; // 100から150にちょっとずらす
+    socket.emit("announce", `${players[socket.id].name}がサッカー参戦！`);
 }
 
-// 逆にサッカー場から戻る判定（サッカー場の下端から広場へ）
-if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450 && myPos.y < 1500 && myPos.x < 1500) {
-    // サッカー場にいる時だけ判定
+// --- 修正：サッカー場(上)から広場(下)へ ---
+if (myPos.y < 20 && myPos.x > 600 && myPos.x < 900) {
     playWarpSound();
-    myPos.x = 750; myPos.y = 1350; // 広場の下の方に戻る
+    myPos.x = 750; 
+    myPos.y = 1350; // 1500付近ではなく1350に飛ばす
 }
-
     if (!isFrozen) {
         let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
         if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
@@ -398,6 +404,15 @@ if (myPos.x < 1500 && myPos.y < 1500) {
         const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
         const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
         ctx.save();
+        if (p.team === 'red') {
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x - 22, y - 22, 44, 44);
+    } else if (p.team === 'blue') {
+        ctx.strokeStyle = "#1d9bf0";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x - 22, y - 22, 44, 44);
+    }
         if (isF) ctx.globalAlpha = 0.5;
         for (let i = 0; i < 64; i++) {
             if (p.avatar[i] === "#555") continue;
@@ -409,10 +424,21 @@ if (myPos.x < 1500 && myPos.y < 1500) {
         ctx.fillStyle = isOni ? "#ff4d4d" : "white"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
         ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
     }
+    // --- ここから書き換え ---
     ctx.restore();
-    document.getElementById("game-btn").style.display = (myPos.x > 5000) ? "block" : "none";
+
+    // ボタンの出し分け
+    const sBtn = document.getElementById("soccer-btn");
+    const gBtn = document.getElementById("game-btn");
+
+    // 鬼ごっこエリア（右下の島）にいたら鬼ごっこボタンを表示
+    if (gBtn) gBtn.style.display = (myPos.x > 5000) ? "block" : "none";
+
+    // サッカーエリア（左上の島）にいて、試合が始まっていないならサッカーボタンを表示
+    if (sBtn) sBtn.style.display = (myPos.x < 1500 && !soccerData.active) ? "block" : "none";
+
     requestAnimationFrame(loop);
-}
+} // loop関数の終わり
 
 function startGame() { socket.emit("start_onigokko"); }
 </script>
