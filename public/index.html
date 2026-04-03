@@ -190,6 +190,8 @@ function joinGame() {
 }
 function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener("resize", resize);
+let soccerData = { ball: {x:750, y:750}, scores: {red:0, blue:0}, timer: 150 };
+socket.on('soccer_update', (data) => { soccerData = data; });
 
 // --- タップ・ズーム ---
 let startDist = 0;
@@ -266,7 +268,20 @@ function updateScoreBoard() {
 function loop() {
     if (!isJoined) return;
     const isFrozen = gameStatus.frozenPages.includes(socket.id);
-    
+    // --- 追加：サッカー場へのワープ（広場の下端 1450付近） ---
+if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450 && myPos.y < 1500) {
+    playWarpSound();
+    myPos.x = 750; myPos.y = 100; // サッカー場の北側（上の方）にスポーン
+    socket.emit("announce", `${players[socket.id].name}がサッカー場に入場！`);
+}
+
+// 逆にサッカー場から戻る判定（サッカー場の下端から広場へ）
+if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450 && myPos.y < 1500 && myPos.x < 1500) {
+    // サッカー場にいる時だけ判定
+    playWarpSound();
+    myPos.x = 750; myPos.y = 1350; // 広場の下の方に戻る
+}
+
     if (!isFrozen) {
         let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
         if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
@@ -294,6 +309,47 @@ function loop() {
             }
         }
         socket.emit("move", { x: myPos.x, y: myPos.y });
+// --- 追加：ボールを蹴る判定 (サッカー場 0~1500 エリアにいる時のみ) ---
+if (myPos.x < 1500 && myPos.y < 1500) {
+    // サーバーから送られてくるボールの座標(soccerData.ball)との距離を測る
+    const dx = myPos.x - soccerData.ball.x;
+    const dy = myPos.y - soccerData.ball.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < 35) { // プレイヤーとボールが接触（半径の合計くらい）
+        // 自分の動いている方向にボールを飛ばす
+        socket.emit('kick_ball', {
+            vx: (keys["a"] ? -12 : keys["d"] ? 12 : 0),
+            vy: (keys["w"] ? -12 : keys["s"] ? 12 : 0)
+        });
+    }
+}
+
+// --- 追加：ボールの描画 ---
+// 芝生を描いた後、プレイヤーを描く前に入れるのがベスト
+ctx.fillStyle = "white";
+ctx.strokeStyle = "black";
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI * 2); // 半径15の円
+ctx.fill();
+ctx.stroke();
+// --- 追加：UI（スコア・タイマー）の表示 ---
+ctx.save();
+ctx.setTransform(1, 0, 0, 1, 0, 0); // カメラの影響を受けないようにリセット
+
+ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+ctx.fillRect(canvas.width / 2 - 160, 10, 320, 50); // 黒い背景枠
+
+ctx.fillStyle = "white";
+ctx.font = "bold 22px sans-serif";
+ctx.textAlign = "center";
+ctx.fillText(
+    `赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青 | 残り ${soccerData.timer}秒`, 
+    canvas.width / 2, 42
+);
+
+ctx.restore();
 
         // 行き（右側へ）
         if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
@@ -320,6 +376,15 @@ function loop() {
     drawFloor(0, 0); drawFloor(5000, 5000);
     ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100); // 行き
     ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100); // 戻り
+// loop内の drawFloor(0, 0); のすぐ下あたりに追加
+if (myPos.x < 1500 && myPos.y < 1500) {
+    // 広場の下側に黄色いライン（入り口）を引く
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(600, 1480, 300, 20);
+    ctx.fillStyle = "white";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText("サッカー場 (下へ)", 750, 1460);
+}
 
     // --- 同期された壁を実際に描画 ---
     const drawWalls = [
