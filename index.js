@@ -150,13 +150,6 @@ io.on('connection', (socket) => {
             }
         }, 1000);
     });
-// ボールを蹴るイベント
-socket.on('kick_ball', (data) => {
-    if (!isSoccerActive) return;
-    // 蹴った方向(vx, vy)をボールに加える
-    ball.vx = data.vx;
-    ball.vy = data.vy;
-});
  // index.js の socket.on('move', ...) 内を書き換え
 socket.on('move', (data) => {
     if (!players[socket.id]) return;
@@ -181,8 +174,7 @@ socket.on('move', (data) => {
     }
 
     // (以下、鬼ごっこの判定などはそのまま)
-    socket.broadcast.emit('player_moved', players[socket.id]);
-});
+
 
     // --- 【既存】鬼ごっこの接触判定ロジック ---
     if (gameStatus.isOnigokko && players[socket.id].x > 5000) {
@@ -218,6 +210,6 @@ socket.on('move', (data) => {
         delete players[socket.id];
         io.emit('update_all', players);
     });
-});
+
 
 http.listen(3000, () => { console.log('Server is running!'); });
