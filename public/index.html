@@ -511,26 +511,41 @@ window.addEventListener("touchend", () => { joyStick.style.transform = `translat
 
 function updateScoreBoard() {
     const sb = document.getElementById("score-board");
-    // 鬼ごっこ中、またはサッカー中の時に表示
-    if (gameStatus.isOnigokko || soccerData.active) {
+    const timerVal = document.getElementById("timer-count");
+    const nigeLabel = document.getElementById("nige-total");
+    const oniLabel = document.getElementById("oni-total");
+
+    if (gameStatus.isOnigokko) {
+        // --- 鬼ごっこモード ---
         sb.style.display = "block";
+        sb.style.borderColor = "#ff4d4d"; // 枠を赤っぽく
         
-        if (gameStatus.isOnigokko) {
-            document.getElementById("timer-count").innerText = gameStatus.timeLeft;
-            const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
-            document.getElementById("nige-total").innerHTML = `<span class="nige-count">${total - oni}</span>人 (凍: ${frozen})`;
-            document.getElementById("oni-total").innerHTML = `<span class="oni-count">${oni}</span>人`;
-        } else {
-            // サッカー表示に切り替え
-            document.getElementById("timer-count").innerText = soccerData.timer;
-            document.getElementById("nige-total").innerHTML = `<span style="color:#ff4d4d">赤: ${soccerData.scores.red}</span>`;
-            document.getElementById("oni-total").innerHTML = `<span style="color:#1d9bf0">青: ${soccerData.scores.blue}</span>`;
-        }
+        timerVal.innerText = `残り ${gameStatus.timeLeft} 秒`;
+        
+        const total = Object.keys(players).length;
+        const oniCount = gameStatus.oniPages.length;
+        const survival = total - oniCount;
+        const frozen = gameStatus.frozenPages.length;
+
+        // 「逃げ◯人」ではなく「生存リスト」のような表現に
+        nigeLabel.innerHTML = `🏃 生存: <span class="nige-count">${survival}</span>名 <small>(凍結: ${frozen})</small>`;
+        oniLabel.innerHTML = `👹 追跡者: <span class="oni-count">${oniCount}</span>名`;
+
+    } else if (soccerData.active) {
+        // --- サッカーモード ---
+        sb.style.display = "block";
+        sb.style.borderColor = "#1d9bf0"; // 枠を青っぽく
+        
+        timerVal.innerText = `MATCH TIME: ${soccerData.timer}s`;
+        
+        // 得点板らしいデザインに
+        nigeLabel.innerHTML = `<b style="color:#ff4d4d">RED</b> <span style="font-size:20px;">${soccerData.scores.red}</span>`;
+        oniLabel.innerHTML = `<b style="color:#1d9bf0">BLUE</b> <span style="font-size:20px;">${soccerData.scores.blue}</span>`;
+        
     } else {
         sb.style.display = "none";
     }
 }
-
 
 
 function loop() {
