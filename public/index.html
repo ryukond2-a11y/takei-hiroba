@@ -527,6 +527,535 @@ function updateScoreBoard() {
 }
 
 
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<title>たけい広場 - 鬼ごっこ完全版</title>
+
+<style>
+
+/* 中央のお知らせ表示 */
+
+#announcer {
+
+position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+
+font-size: 48px; font-weight: bold; color: #ff4d4d;
+
+text-shadow: 0 0 20px #000; z-index: 1000; pointer-events: none;
+
+display: none;
+
+}
+
+body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; touch-action: none; color: white; }
+
+canvas { display: block; }
+
+#setup-screen {
+
+position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+
+background: #111; display: flex; flex-direction: column;
+
+align-items: center; justify-content: center; z-index: 100;
+
+}
+
+#pixel-editor { display: grid; grid-template-columns: repeat(8, 30px); gap: 2px; margin: 20px 0; background: #333; padding: 5px; }
+
+.pixel { width: 30px; height: 30px; background: #555; cursor: pointer; }
+
+#ui { position: fixed; top: 10px; left: 10px; z-index: 10; pointer-events: none; }
+
+#status { background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; margin-bottom: 5px; display: inline-block; }
+
+#score-board { background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; font-size: 14px; line-height: 1.6; display: none; }
+
+.oni-count { color: #ff4d4d; font-weight: bold; }
+
+.nige-count { color: #1d9bf0; font-weight: bold; }
+
+.timer-val { color: #ffff00; font-size: 18px; font-weight: bold; }
+
+.color-btn { width: 35px; height: 35px; border-radius: 50%; cursor: pointer; border: 2px solid #fff; margin: 0 5px; }
+
+#joy-base {
+
+position: fixed; bottom: 60px; right: 60px; width: 160px; height: 160px;
+
+background: rgba(255,255,255,0.1); border: 3px solid rgba(255,255,255,0.3);
+
+border-radius: 50%; display: none; z-index: 10;
+
+}
+
+#joy-stick { position: absolute; width: 70px; height: 70px; background: rgba(255,255,255,0.5); border-radius: 50%; top: 45px; left: 45px; }
+
+#game-btn {
+
+position: fixed; top: 10px; right: 10px; padding: 10px 20px;
+
+background: #ff4d4d; color: white; border: none; border-radius: 5px;
+
+font-weight: bold; display: none; z-index: 20; pointer-events: auto;
+
+}
+
+
+
+/* 「チャット」ボタンの設定 */
+
+#chat-btn {
+
+position: fixed;
+
+top: 10px;
+
+right: 160px; /* 鬼ごっこボタンの左側に置く（重ならないように） */
+
+padding: 10px 20px;
+
+background: #1d9bf0;
+
+color: white;
+
+border: none;
+
+border-radius: 5px;
+
+font-weight: bold;
+
+display: block; /* 常に表示 */
+
+z-index: 20;
+
+pointer-events: auto;
+
+cursor: pointer;
+
+}
+
+
+
+/* チャットボタンだけ少し左にずらす（重なり防止） */
+
+#chat-btn {
+
+right: 150px; /* 鬼ごっこボタンの左側に配置 */
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="announcer"></div>
+
+<div id="setup-screen">
+
+<h2>アバターを作成して広場へ</h2>
+
+<input type="text" id="user-name" placeholder="なまえ" style="padding: 10px; width: 200px; margin-bottom: 10px;">
+
+<div id="pixel-editor"></div>
+
+<div style="display:flex; align-items:center; margin-bottom: 20px;">
+
+<div class="color-btn" style="background: #1d9bf0;" onclick="currentColor='#1d9bf0'"></div>
+
+<div class="color-btn" style="background: #ff4d4d;" onclick="currentColor='#ff4d4d'"></div>
+
+
+<span style="margin-left:15px; margin-right:5px;">自由な色:</span>
+
+<input type="color" id="color-picker" value="#1d9bf0"
+
+oninput="currentColor=this.value"
+
+style="width:50px; height:40px; cursor:pointer;">
+
+</div>
+
+<button onclick="joinGame()" style="padding: 12px 30px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold;">広場に入る！</button>
+
+</div>
+
+
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui">
+
+<div id="status"></div><br>
+
+<div id="score-board">
+
+TIME: <span id="timer-count" class="timer-val">0</span><br>
+
+逃げ: <span id="nige-total" class="nige-count">0</span>人 (凍: <span id="frozen-total">0</span>)<br>
+
+鬼: <span id="oni-total" class="oni-count">0</span>人
+
+</div>
+
+</div>
+
+<button id="chat-btn" class="game-btn" onclick="openChat()">チャット</button>
+
+<button id="game-btn" class="game-btn" style="background: #ff4d4d; position: fixed; top: 10px; right: 10px; display: none;" onclick="startGame()">鬼ごっこ開始！</button>
+<button id="soccer-btn" class="game-btn" 
+    style="position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold; display: none; z-index: 20; cursor: pointer;" 
+    onclick="socket.emit('start_soccer')">サッカー開始！</button>
+<div id="joy-base"><div id="joy-stick"></div></div>
+
+
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playWarpSound() {
+
+const osc = audioCtx.createOscillator();
+
+const gain = audioCtx.createGain();
+
+osc.type = 'exponential';
+
+osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+
+osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+
+gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+
+gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+
+osc.connect(gain); gain.connect(audioCtx.destination);
+
+osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+
+}
+
+
+
+
+
+const socket = io({
+
+reconnection: true,
+
+reconnectionAttempts: Infinity,
+
+reconnectionDelay: 1000
+
+});
+
+let currentWallOffset = 0; // サーバーから受け取る用
+
+socket.on('wall_update', (offset) => {
+
+currentWallOffset = offset;
+
+});
+
+// ★このブロックを新しく追加（socketのすぐ下でOK）
+
+socket.on('connect', () => {
+
+if (isJoined) {
+
+const name = document.getElementById("user-name").value.trim();
+
+// サーバーがリセットされても、今の座標(myPos)とアバターを送り直して復帰する
+
+socket.emit("join", {
+
+name: name,
+
+avatar: myAvatar,
+
+x: myPos.x,
+
+y: myPos.y
+
+});
+
+}
+
+});
+
+const canvas = document.getElementById("gameCanvas");
+
+const ctx = canvas.getContext("2d");
+
+let players = {}, myPos = { x: 750, y: 750 }, velocity = { x: 0, y: 0 }, scale = 1.0;
+
+const speed = 6, worldSize = 1500;
+
+let isJoined = false, myAvatar = Array(64).fill("#555"), currentColor = "#1d9bf0";
+
+let gameStatus = { isOnigokko: false, oniPages: [], frozenPages: [], timeLeft: 0 };
+
+
+
+// --- 初期設定・アバター ---
+
+window.onload = () => {
+
+const saved = localStorage.getItem("neda_lab_user");
+
+if (saved) {
+
+const data = JSON.parse(saved);
+
+document.getElementById("user-name").value = data.name;
+
+myAvatar = data.avatar;
+
+updateEditor();
+
+}
+
+};
+
+function updateEditor() {
+
+const pixels = document.querySelectorAll(".pixel");
+
+myAvatar.forEach((color, i) => { if(pixels[i]) pixels[i].style.background = color; });
+
+}
+
+function openChat() {
+
+const msg = prompt("みんなにメッセージを送る:");
+
+if (msg && msg.trim() !== "") {
+
+socket.emit("send_chat", msg);
+
+}
+
+}
+
+const editor = document.getElementById("pixel-editor");
+
+for (let i = 0; i < 64; i++) {
+
+const div = document.createElement("div");
+
+div.className = "pixel";
+
+div.onclick = () => { div.style.background = currentColor; myAvatar[i] = currentColor; };
+
+editor.appendChild(div);
+
+}
+
+
+
+// ★ここを書き換え
+
+function joinGame() {
+
+const name = document.getElementById("user-name").value.trim();
+
+if (!name) return alert("なまえをいれてね");
+
+localStorage.setItem("neda_lab_user", JSON.stringify({ name, avatar: myAvatar }));
+
+document.getElementById("setup-screen").style.display = "none";
+
+if (audioCtx.state === 'suspended') audioCtx.resume();
+
+
+isJoined = true;
+
+
+// ★ここ！ `{ name, avatar: myAvatar }` だったところに `x, y` を追加
+
+socket.emit("join", {
+
+name: name,
+
+avatar: myAvatar,
+
+x: myPos.x,
+
+y: myPos.y
+
+});
+
+
+document.getElementById("status").innerText = `広場: ${name}`;
+
+resize(); requestAnimationFrame(loop);
+
+}
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+window.addEventListener("resize", resize);
+
+let soccerData = { ball: {x:750, y:750}, scores: {red:0, blue:0}, timer: 150 };
+
+socket.on('soccer_update', (data) => { soccerData = data; });
+
+
+
+// --- タップ・ズーム ---
+
+let startDist = 0;
+
+window.addEventListener("touchstart", (e) => {
+
+if (e.touches.length === 2) startDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+
+});
+
+window.addEventListener("touchmove", (e) => {
+
+if (e.touches.length === 2) {
+
+const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+
+scale = Math.max(0.7, Math.min(2.0, scale * (dist / startDist)));
+
+startDist = dist;
+
+}
+
+}, { passive: false });
+
+
+
+window.addEventListener("click", (e) => {
+
+if (!isJoined) return;
+
+const rect = canvas.getBoundingClientRect();
+
+const mx = (e.clientX - rect.left - canvas.width/2) / scale + myPos.x;
+
+const my = (e.clientY - rect.top - canvas.height/2) / scale + myPos.y;
+
+if (mx > 1480 && mx < 1510 && my > 700 && my < 800) { playWarpSound(); myPos.x = 5100; myPos.y = 5750; }
+
+if (mx > 5000 && mx < 5030 && my > 5700 && my < 5800) { playWarpSound(); myPos.x = 750; myPos.y = 750; }
+
+});
+
+
+
+// --- 通信 ---
+
+socket.on("update_all", (data) => { players = data; updateScoreBoard(); });
+
+socket.on("player_moved", (p) => { if(players[p.id]) { players[p.id].x = p.x; players[p.id].y = p.y; } });
+
+socket.on("onigokko_update", (data) => { gameStatus = data; updateScoreBoard(); });
+
+// --- アナウンス演出の受信 ---
+
+socket.on("announce", (msg) => {
+
+const el = document.getElementById("announcer");
+
+el.innerText = msg;
+
+el.style.display = "block";
+
+
+// 2秒後に消す（「終了！」の時は少し長めに見せる）
+
+setTimeout(() => {
+
+el.style.display = "none";
+
+}, 2000);
+
+});
+
+
+
+// loop関数の修正は不要（gameStatus.isOnigokkoがfalseになれば自動で見た目が戻るよ！）
+
+const keys = {};
+
+window.addEventListener("keydown", (e) => keys[e.key] = true);
+
+window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+
+
+// ジョイスティック
+
+if ("ontouchstart" in window) {
+
+const joyBase = document.getElementById("joy-base");
+
+const joyStick = document.getElementById("joy-stick");
+
+joyBase.style.display = "block";
+
+window.addEventListener("touchmove", (e) => {
+
+const rect = joyBase.getBoundingClientRect();
+
+const centerX = rect.left + 160/2, centerY = rect.top + 160/2;
+
+const touch = e.touches[0];
+
+let dx = touch.clientX - centerX, dy = touch.clientY - centerY;
+
+const dist = Math.min(70, Math.sqrt(dx*dx + dy*dy));
+
+const angle = Math.atan2(dy, dx);
+
+const mx = Math.cos(angle) * dist, my = Math.sin(angle) * dist;
+
+joyStick.style.transform = `translate(${mx}px, ${my}px)`;
+
+velocity = { x: (mx/70)*speed, y: (my/70)*speed };
+
+}, { passive: false });
+
+window.addEventListener("touchend", () => { joyStick.style.transform = `translate(0,0)`; velocity = { x:0, y:0 }; });
+
+}
+
+
+
+function updateScoreBoard() {
+    const sb = document.getElementById("score-board");
+    // 鬼ごっこ中
+    if (gameStatus.isOnigokko) {
+        sb.style.display = "block";
+        sb.style.background = "rgba(255, 0, 0, 0.4)"; // 鬼ごっこは赤背景
+        document.getElementById("timer-count").innerText = gameStatus.timeLeft;
+        const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
+        document.getElementById("nige-total").innerHTML = `生存: <span class="nige-count">${total - oni}</span>人`;
+        document.getElementById("oni-total").innerHTML = `鬼: <span class="oni-count">${oni}</span>人 (凍: ${frozen})`;
+    } 
+    // サッカー中（それ以外）
+    else {
+        sb.style.display = "none";
+    }
+}
+
+
 function loop() {
 
 if (!isJoined) return;
@@ -887,6 +1416,10 @@ requestAnimationFrame(loop);
 function startGame() { socket.emit("start_onigokko"); }
 
 </script>
+
+</body>
+
+</html>
 
 </body>
 
