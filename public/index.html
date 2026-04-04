@@ -184,7 +184,9 @@ TIME: <span id="timer-count" class="timer-val">0</span><br>
 <button id="chat-btn" class="game-btn" onclick="openChat()">チャット</button>
 
 <button id="game-btn" class="game-btn" style="background: #ff4d4d; position: fixed; top: 10px; right: 10px; display: none;" onclick="startGame()">鬼ごっこ開始！</button>
-<button id="soccer-btn" class="game-btn" style="background: #1d9bf0; position: fixed; top: 10px; right: 10px; display: none;" onclick="socket.emit('start_soccer')">サッカー開始！</button>
+<button id="soccer-btn" class="game-btn" 
+    style="position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #1d9bf0; color: white; border: none; border-radius: 5px; font-weight: bold; display: none; z-index: 20; cursor: pointer;" 
+    onclick="socket.emit('start_soccer')">サッカー開始！</button>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
 
@@ -508,21 +510,25 @@ window.addEventListener("touchend", () => { joyStick.style.transform = `translat
 
 
 function updateScoreBoard() {
-
-if (!gameStatus.isOnigokko) { document.getElementById("score-board").style.display = "none"; return; }
-
-document.getElementById("score-board").style.display = "block";
-
-document.getElementById("timer-count").innerText = gameStatus.timeLeft;
-
-const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
-
-document.getElementById("nige-total").innerText = total - oni;
-
-document.getElementById("frozen-total").innerText = frozen;
-
-document.getElementById("oni-total").innerText = oni;
-
+    const sb = document.getElementById("score-board");
+    // 鬼ごっこ中、またはサッカー中の時に表示
+    if (gameStatus.isOnigokko || soccerData.active) {
+        sb.style.display = "block";
+        
+        if (gameStatus.isOnigokko) {
+            document.getElementById("timer-count").innerText = gameStatus.timeLeft;
+            const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
+            document.getElementById("nige-total").innerHTML = `<span class="nige-count">${total - oni}</span>人 (凍: ${frozen})`;
+            document.getElementById("oni-total").innerHTML = `<span class="oni-count">${oni}</span>人`;
+        } else {
+            // サッカー表示に切り替え
+            document.getElementById("timer-count").innerText = soccerData.timer;
+            document.getElementById("nige-total").innerHTML = `<span style="color:#ff4d4d">赤: ${soccerData.scores.red}</span>`;
+            document.getElementById("oni-total").innerHTML = `<span style="color:#1d9bf0">青: ${soccerData.scores.blue}</span>`;
+        }
+    } else {
+        sb.style.display = "none";
+    }
 }
 
 
@@ -807,24 +813,65 @@ drawWalls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
 
 
+// --- loop関数内の描画ループ（for (let id in players)）の中 ---
 for (let id in players) {
+    const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
+    const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
+    
+    ctx.save();
+    if (isF) ctx.globalAlpha = 0.5;
 
-const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
+    // アバター描画
+    for (let i = 0; i < 64; i++) {
+        if (p.avatar[i] === "#555") continue;
+        ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
+        ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
+    }
 
-const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
+    // --- 【修正】足元の円判定 ---
+    if (isOni) { 
+        ctx.strokeStyle = "#ff4d4d"; // 鬼は赤
+    } else if (p.team === 'red') {
+        ctx.strokeStyle = "#ff4d4d"; // 赤チーム
+    } else if (p.team === 'blue') {
+        ctx.strokeStyle = "#1d9bf0"; // 青チーム
+    } else {
+        ctx.strokeStyle = "transparent";
+    }
+    
+    if (ctx.strokeStyle !== "transparent") {
+        ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+    
+    // 名前表示
+    ctx.fillStyle = (isOni || p.team === 'red') ? "#ff4d4d" : (p.team === 'blue' ? "#1d9bf0" : "white");
+    ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
+}
 
-ctx.save();
+// --- 【修正】ボールの描画 (座標を8000エリアで判定) ---
+if (soccerData.active) {
+    ctx.fillStyle = "white";
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // サーバーから送られてくる座標(9000付近)でそのまま描画
+    ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI * 2); 
+    ctx.fill();
+    ctx.stroke();
 
-if (isF) ctx.globalAlpha = 0.5;
-
-for (let i = 0; i < 64; i++) {
-
-if (p.avatar[i] === "#555") continue;
-
-ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
-
-ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
-
+    // キック判定も8000エリアで行う
+    if (myPos.x > 8000) {
+        const dx = myPos.x - soccerData.ball.x;
+        const dy = myPos.y - soccerData.ball.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 40) {
+            socket.emit('kick_ball', {
+                vx: (keys["a"] ? -15 : keys["d"] ? 15 : 0),
+                vy: (keys["w"] ? -15 : keys["s"] ? 15 : 0)
+            });
+        }
+    }
 }
 
 if (isOni) { ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke(); }
