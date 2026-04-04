@@ -510,176 +510,350 @@ window.addEventListener("touchend", () => { joyStick.style.transform = `translat
 
 
 function updateScoreBoard() {
-    const sb = document.getElementById("score-board");
-    const timerVal = document.getElementById("timer-count");
-    const nigeLabel = document.getElementById("nige-total");
-    const oniLabel = document.getElementById("oni-total");
 
-    if (gameStatus.isOnigokko) {
-        // --- 鬼ごっこモード ---
-        sb.style.display = "block";
-        sb.style.borderColor = "#ff4d4d"; // 枠を赤っぽく
-        
-        timerVal.innerText = `残り ${gameStatus.timeLeft} 秒`;
-        
-        const total = Object.keys(players).length;
-        const oniCount = gameStatus.oniPages.length;
-        const survival = total - oniCount;
-        const frozen = gameStatus.frozenPages.length;
+if (!gameStatus.isOnigokko) { document.getElementById("score-board").style.display = "none"; return; }
 
-        // 「逃げ◯人」ではなく「生存リスト」のような表現に
-        nigeLabel.innerHTML = `🏃 生存: <span class="nige-count">${survival}</span>名 <small>(凍結: ${frozen})</small>`;
-        oniLabel.innerHTML = `👹 追跡者: <span class="oni-count">${oniCount}</span>名`;
+document.getElementById("score-board").style.display = "block";
 
-    } else if (soccerData.active) {
-        // --- サッカーモード ---
-        sb.style.display = "block";
-        sb.style.borderColor = "#1d9bf0"; // 枠を青っぽく
-        
-        timerVal.innerText = `MATCH TIME: ${soccerData.timer}s`;
-        
-        // 得点板らしいデザインに
-        nigeLabel.innerHTML = `<b style="color:#ff4d4d">RED</b> <span style="font-size:20px;">${soccerData.scores.red}</span>`;
-        oniLabel.innerHTML = `<b style="color:#1d9bf0">BLUE</b> <span style="font-size:20px;">${soccerData.scores.blue}</span>`;
-        
-    } else {
-        sb.style.display = "none";
-    }
+document.getElementById("timer-count").innerText = gameStatus.timeLeft;
+
+const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
+
+document.getElementById("nige-total").innerText = total - oni;
+
+document.getElementById("frozen-total").innerText = frozen;
+
+document.getElementById("oni-total").innerText = oni;
+
 }
+
 
 
 function loop() {
-    if (!isJoined) return;
-    const isFrozen = gameStatus.frozenPages.includes(socket.id);
 
-    // --- 1. ワープ判定 ---
-    // 広場(下) -> サッカー
-    if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450) {
-        playWarpSound();
-        myPos.x = 9000; myPos.y = 8100;
-    }
-    // サッカー(上) -> 広場
-    if (myPos.x > 8000 && myPos.x < 10000 && myPos.y < 8050) {
-        playWarpSound();
-        myPos.x = 750; myPos.y = 1350;
-    }
-    // 鬼ごっこ行き来
-    if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
-        playWarpSound(); myPos.x = 5100; myPos.y = 5750;
-    }
-    if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
-        playWarpSound(); myPos.x = 750; myPos.y = 750;
-    }
+if (!isJoined) return;
 
-    // --- 2. 移動処理 ---
-    if (!isFrozen) {
-        let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
-        if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
-        if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
+const isFrozen = gameStatus.frozenPages.includes(socket.id);
 
-        const walls = [
-            { x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 },
-            { x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
-        ];
+// --- 追加：サッカー場へのワープ（広場の下端 1450付近） ---
 
-        let canMove = true;
-        walls.forEach(w => {
-            if (nx + 15 > w.x && nx - 15 < w.x + w.w && ny + 15 > w.y && ny - 15 < w.y + w.h) canMove = false;
-        });
+// --- loop関数の中にあるワープ判定を探して書き換え ---
 
-        if (canMove && nx > 30 && nx < 11000) {
-            if ((nx < 1500 && ny > 0 && ny < 1500) || 
-                (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) ||
-                (nx > 8000 && nx < 10500 && ny > 8000 && ny < 9500)) { 
-                myPos.x = nx; myPos.y = ny;
-            }
-        }
-        socket.emit("move", { x: myPos.x, y: myPos.y });
+// 【修正前】
+// if (ゲートに触れたら) { myPos.y = 0; } // みたいな書き方になってるはず
 
-        // サッカーキック判定
-        if (soccerData.active && myPos.x > 8000) {
-            const dx = myPos.x - soccerData.ball.x, dy = myPos.y - soccerData.ball.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 40) {
-                socket.emit('kick_ball', {
-                    vx: (keys["a"] ? -15 : keys["d"] ? 15 : 0),
-                    vy: (keys["w"] ? -15 : keys["s"] ? 15 : 0)
-                });
-            }
-        }
-    }
-
-    // --- 3. 描画開始 ---
-    ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(scale, scale); ctx.translate(-myPos.x, -myPos.y);
-
-    // 床
-    const drawFloor = (x, y) => {
-        ctx.fillStyle = "#3e6b3e"; ctx.fillRect(x, y, 1500, 1500);
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        for(let i=0; i<=1500; i+=50) { for(let j=0; j<=1500; j+=25) { ctx.strokeRect(x+i+(j%50==0?0:25), y+j, 50, 25); } }
-    };
-    drawFloor(0, 0); drawFloor(5000, 5000);
-    
-    // サッカーコート描画
-    ctx.fillStyle = "#1b5e20"; ctx.fillRect(8000, 8000, 2000, 1200); 
-    ctx.strokeStyle = "white"; ctx.lineWidth = 5;
-    ctx.strokeRect(8050, 8050, 1900, 1100); 
-    ctx.beginPath(); ctx.moveTo(9000, 8050); ctx.lineTo(9000, 9150); ctx.stroke();
-    ctx.beginPath(); ctx.arc(9000, 8600, 100, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = "rgba(255,0,0,0.4)"; ctx.fillRect(8000, 8400, 50, 400); 
-    ctx.fillStyle = "rgba(0,0,255,0.4)"; ctx.fillRect(9950, 8400, 50, 400); 
-    ctx.fillStyle = "yellow"; ctx.fillRect(8900, 8005, 200, 15);
-
-    // ゲート描画
-    ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100);
-    ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100);
-    if (myPos.x < 1500) {
-        ctx.fillStyle = "yellow"; ctx.fillRect(600, 1480, 300, 20);
-        ctx.fillStyle = "white"; ctx.font = "bold 20px sans-serif"; ctx.fillText("サッカー場 (下へ)", 750, 1460);
-    }
-
-    // 動く壁
-    ctx.fillStyle = "#ffcc00";
-    [{ x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 },
-     { x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }].forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-
-    // ボール描画
-    if (soccerData.active) {
-        ctx.fillStyle = "white"; ctx.strokeStyle = "black"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
-
-    // プレイヤー描画
-    for (let id in players) {
-        const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
-        const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
-        ctx.save();
-        if (isF) ctx.globalAlpha = 0.5;
-        for (let i = 0; i < 64; i++) {
-            if (p.avatar[i] === "#555") continue;
-            ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
-            ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
-        }
-        ctx.lineWidth = 3;
-        if (isOni || p.team === 'red') ctx.strokeStyle = "#ff4d4d";
-        else if (p.team === 'blue') ctx.strokeStyle = "#1d9bf0";
-        else ctx.strokeStyle = "transparent";
-        if (ctx.strokeStyle !== "transparent") { ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke(); }
-        ctx.restore();
-        ctx.fillStyle = (isOni || p.team === 'red') ? "#ff4d4d" : (p.team === 'blue' ? "#1d9bf0" : "white");
-        ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
-    }
-    ctx.restore();
-
-    // UI表示
-    document.getElementById("game-btn").style.display = (myPos.x > 5000 && myPos.x < 7000) ? "block" : "none";
-    const soccerBtn = document.getElementById("soccer-btn");
-    if (soccerBtn) soccerBtn.style.display = (myPos.x > 8000 && !soccerData.active) ? "block" : "none";
-
-    requestAnimationFrame(loop);
+// 【修正後】
+// 広場の南端（y > 1450）にあるゲートに触れたら、サッカー場（8000番台）へ飛ばす
+if (myPos.x > 600 && myPos.x < 900 && myPos.y > 1450) {
+    playWarpSound(); // もし音の関数があれば
+    myPos.x = 9000;  // サッカーコートの横幅中央
+    myPos.y = 8100;  // サッカーコートの上側（入り口）
 }
+
+// 【追加】サッカー場から広場に戻るためのゲートも作っておこう
+// サッカー場の北端（y < 8050）に触れたら、広場（750, 1350）へ戻す
+if (myPos.x > 8000 && myPos.x < 10000 && myPos.y < 8050) {
+    playWarpSound();
+    myPos.x = 750;   // 広場の中央
+    myPos.y = 1350;  // 広場の南側（ゲートの前）に戻る
+}
+
+
+if (!isFrozen) {
+
+let nx = myPos.x + (velocity.x || 0), ny = myPos.y + (velocity.y || 0);
+
+if (keys["w"]) ny -= speed; if (keys["s"]) ny += speed;
+
+if (keys["a"]) nx -= speed; if (keys["d"]) nx += speed;
+
+
+
+// --- 動く壁との当たり判定（移動を確定させる前にチェック） ---
+
+const walls = [
+
+{ x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 },
+
+{ x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
+
+];
+
+
+
+let canMove = true;
+
+walls.forEach(w => {
+
+// 自分のサイズ(20px程度)を考慮した判定
+
+if (nx + 15 > w.x && nx - 15 < w.x + w.w &&
+
+ny + 15 > w.y && ny - 15 < w.y + w.h) {
+
+canMove = false;
+
+}
+
+});
+
+
+
+// 壁にぶつかっていない場合のみ、座標を更新
+
+// --- 修正箇所：nx < 6500 だったのを nx < 11000 に広げる ---
+if (canMove && nx > 30 && nx < 11000) {
+    // 【条件】広場エリア(0-1500) OR 鬼ごっこエリア(5000-6500) OR サッカーエリア(8000-10500)
+    if ((nx < 1500 && ny > 0 && ny < 1500) || 
+        (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) ||
+        (nx > 8000 && nx < 10500 && ny > 8000 && ny < 9500)) { 
+        
+        myPos.x = nx; 
+        myPos.y = ny;
+    }
+}
+
+socket.emit("move", { x: myPos.x, y: myPos.y });
+
+// --- 追加：ボールを蹴る判定 (サッカー場 0~1500 エリアにいる時のみ) ---
+
+if (myPos.x < 1500 && myPos.y < 1500) {
+
+// サーバーから送られてくるボールの座標(soccerData.ball)との距離を測る
+
+const dx = myPos.x - soccerData.ball.x;
+
+const dy = myPos.y - soccerData.ball.y;
+
+const distance = Math.sqrt(dx * dx + dy * dy);
+
+
+
+if (distance < 35) { // プレイヤーとボールが接触（半径の合計くらい）
+
+// 自分の動いている方向にボールを飛ばす
+
+socket.emit('kick_ball', {
+
+vx: (keys["a"] ? -12 : keys["d"] ? 12 : 0),
+
+vy: (keys["w"] ? -12 : keys["s"] ? 12 : 0)
+
+});
+
+}
+
+}
+
+
+
+// --- 追加：ボールの描画 ---
+
+// 芝生を描いた後、プレイヤーを描く前に入れるのがベスト
+
+ctx.fillStyle = "white";
+
+ctx.strokeStyle = "black";
+
+ctx.lineWidth = 2;
+
+ctx.beginPath();
+
+ctx.arc(soccerData.ball.x, soccerData.ball.y, 15, 0, Math.PI * 2); // 半径15の円
+
+ctx.fill();
+
+ctx.stroke();
+
+// --- 追加：UI（スコア・タイマー）の表示 ---
+
+ctx.save();
+
+ctx.setTransform(1, 0, 0, 1, 0, 0); // カメラの影響を受けないようにリセット
+
+
+
+ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+
+ctx.fillRect(canvas.width / 2 - 160, 10, 320, 50); // 黒い背景枠
+
+
+
+ctx.fillStyle = "white";
+
+ctx.font = "bold 22px sans-serif";
+
+ctx.textAlign = "center";
+
+ctx.fillText(
+
+`赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青 | 残り ${soccerData.timer}秒`,
+
+canvas.width / 2, 42
+
+);
+
+
+
+ctx.restore();
+
+
+
+// 行き（右側へ）
+
+if (myPos.x > 1470 && myPos.x < 1510 && myPos.y > 700 && myPos.y < 800) {
+
+playWarpSound();
+
+myPos.x = 5100; myPos.y = 5750;
+
+}
+
+// 戻り（左側へ）
+
+if (myPos.x > 4990 && myPos.x < 5030 && myPos.y > 5700 && myPos.y < 5800) {
+
+playWarpSound();
+
+myPos.x = 750; myPos.y = 750;
+
+}
+
+}
+
+
+
+ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+ctx.save();
+
+ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(scale, scale); ctx.translate(-myPos.x, -myPos.y);
+
+
+
+// 床描画
+
+const drawFloor = (x, y) => {
+
+ctx.fillStyle = "#3e6b3e"; ctx.fillRect(x, y, 1500, 1500);
+
+ctx.strokeStyle = "rgba(255,255,255,0.05)";
+
+for(let i=0; i<=1500; i+=50) { for(let j=0; j<=1500; j+=25) { ctx.strokeRect(x+i+(j%50==0?0:25), y+j, 50, 25); } }
+
+};
+
+drawFloor(0, 0); drawFloor(5000, 5000);
+
+ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100); // 行き
+
+ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100); // 戻り
+// --- 【追加】第3のエリア：サッカー場を描画 ---
+// 1. 床を濃い緑にする
+ctx.fillStyle = "#1b5e20"; 
+ctx.fillRect(8000, 8000, 2000, 1200); 
+
+// 2. 白いラインを描く
+ctx.strokeStyle = "white";
+ctx.lineWidth = 5;
+ctx.strokeRect(8050, 8050, 1900, 1100); // 外枠
+ctx.beginPath();
+ctx.moveTo(9000, 8050); ctx.lineTo(9000, 9150); // センターライン
+ctx.stroke();
+ctx.beginPath();
+ctx.arc(9000, 8600, 100, 0, Math.PI*2); // センターサークル
+ctx.stroke();
+
+// 3. ゴールポストを描く
+ctx.fillStyle = "rgba(255, 0, 0, 0.4)"; 
+ctx.fillRect(8000, 8400, 50, 400); // 左ゴール（赤チーム）
+ctx.fillStyle = "rgba(0, 0, 255, 0.4)"; 
+ctx.fillRect(9950, 8400, 50, 400); // 右ゴール（青チーム）
+
+// 4. 帰還用ゲート（北側の壁に白線を引く）
+ctx.fillStyle = "yellow";
+ctx.fillRect(8900, 8005, 200, 15);
+// loop内の drawFloor(0, 0); のすぐ下あたりに追加
+
+if (myPos.x < 1500 && myPos.y < 1500) {
+
+// 広場の下側に黄色いライン（入り口）を引く
+
+ctx.fillStyle = "yellow";
+
+ctx.fillRect(600, 1480, 300, 20);
+
+ctx.fillStyle = "white";
+
+ctx.font = "bold 20px sans-serif";
+
+ctx.fillText("サッカー場 (下へ)", 750, 1460);
+
+}
+
+
+
+// --- 同期された壁を実際に描画 ---
+
+const drawWalls = [
+
+{ x: 5500 + (window.currentWallOffset || 0), y: 5300, w: 400, h: 40 },
+
+{ x: 5800, y: 5200 + ((window.currentWallOffset || 0) * 0.8), w: 40, h: 400 }
+
+];
+
+ctx.fillStyle = "#ffcc00"; // 警告色っぽく
+
+drawWalls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+
+
+for (let id in players) {
+
+const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
+
+const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
+
+ctx.save();
+
+if (isF) ctx.globalAlpha = 0.5;
+
+for (let i = 0; i < 64; i++) {
+
+if (p.avatar[i] === "#555") continue;
+
+ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
+
+ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
+
+}
+
+if (isOni) { ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke(); }
+
+ctx.restore();
+
+ctx.fillStyle = isOni ? "#ff4d4d" : "white"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+
+ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
+
+}
+
+ctx.restore();
+
+// 鬼ごっこボタンの表示
+document.getElementById("game-btn").style.display = (myPos.x > 5000 && myPos.x < 7000) ? "block" : "none";
+
+// 【追加】サッカーボタンの表示（x > 8000 の時だけ出す）
+const soccerBtn = document.getElementById("soccer-btn");
+if (soccerBtn) {
+    soccerBtn.style.display = (myPos.x > 8000 && !soccerData.active) ? "block" : "none";
+}
+
+requestAnimationFrame(loop);
+
+}
+
 
 
 function startGame() { socket.emit("start_onigokko"); }
