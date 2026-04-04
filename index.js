@@ -157,27 +157,32 @@ socket.on('kick_ball', (data) => {
     ball.vx = data.vx;
     ball.vy = data.vy;
 });
- socket.on('move', (data) => {
+ // index.js の socket.on('move', ...) 内を書き換え
+socket.on('move', (data) => {
     if (!players[socket.id]) return;
-    
-    // 凍結されているプレイヤーは動けない（鬼ごっこのルール）
     if (gameStatus.frozenPages.includes(socket.id)) return;
 
     players[socket.id].x = data.x;
     players[socket.id].y = data.y;
 
-    // --- 【追加】サッカーのチーム分けロジック ---
-    if (data.x > 7500) { // サッカー場エリアにいる場合
+    // --- サッカーのエリア内(x > 7500)に入った時だけチームを決める ---
+    if (data.x > 7500) {
         if (!players[socket.id].team) {
+            // まだチームがない人だけ計算
             const pArray = Object.values(players).filter(p => p.x > 7500 && p.team);
             const redC = pArray.filter(p => p.team === 'red').length;
             const blueC = pArray.filter(p => p.team === 'blue').length;
             players[socket.id].team = (redC <= blueC) ? 'red' : 'blue';
-            socket.emit('announce', `あなたは ${players[socket.id].team === 'red' ? '赤' : '青'} チーム！`);
+            socket.emit('announce', `${players[socket.id].team === 'red' ? '赤' : '青'}チームに参加！`);
         }
     } else {
-        players[socket.id].team = null; // エリア外なら解除
+        // エリアを出たらチームを解除する（これで広場に戻ってもリセットされる）
+        players[socket.id].team = null;
     }
+
+    // (以下、鬼ごっこの判定などはそのまま)
+    socket.broadcast.emit('player_moved', players[socket.id]);
+});
 
     // --- 【既存】鬼ごっこの接触判定ロジック ---
     if (gameStatus.isOnigokko && players[socket.id].x > 5000) {
