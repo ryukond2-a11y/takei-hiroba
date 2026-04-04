@@ -205,7 +205,24 @@ socket.on('kick_ball', (data) => {
             }
         }
     }
-
+socket.on('start_soccer', () => {
+    if (isSoccerActive) return;
+    soccerScores = { red: 0, blue: 0 };
+    soccerTimer = 150; // ここを150にする
+    isSoccerActive = true;
+    resetBall();
+    io.emit('announce', "サッカー開始！");
+    
+    const sInt = setInterval(() => {
+        soccerTimer--;
+        if (soccerTimer <= 0) {
+            clearInterval(sInt);
+            isSoccerActive = false;
+            let res = soccerScores.red > soccerScores.blue ? "赤の勝ち！" : (soccerScores.blue > soccerScores.red ? "青の勝ち！" : "引き分け！");
+            io.emit('announce', "試合終了！ " + res);
+        }
+    }, 1000);
+});
     // 全員に位置を同期
     socket.broadcast.emit('player_moved', players[socket.id]);
 });
