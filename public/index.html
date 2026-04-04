@@ -808,61 +808,50 @@ drawWalls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
 
 // loop内のプレイヤー描画ループの中
+// loop内のプレイヤー描画ループの中
 for (let id in players) {
-    const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
-    const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
+    const p = players[id];
+    // 自分なら myPos、他の人なら p.x/y を使う
+    const x = (id === socket.id) ? myPos.x : p.x;
+    const y = (id === socket.id) ? myPos.y : p.y;
+    
+    const isOni = gameStatus.oniPages.includes(id);
+    const isF = gameStatus.frozenPages.includes(id);
 
     ctx.save();
     if (isF) ctx.globalAlpha = 0.5;
 
-    // アバター描画
+    // --- 1. アバター本体の描画 ---
     for (let i = 0; i < 64; i++) {
         if (p.avatar[i] === "#555") continue;
         ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
         ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
     }
 
-    // --- 枠の描き分け ---
+    // --- 2. わっかの描き分け（ここが重要！） ---
     if (isOni) {
-        // 鬼：赤い二重円（トゲトゲっぽく見える）
-        ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(x, y, 32, 0, Math.PI*2); ctx.stroke();
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(x, y, 38, 0, Math.PI*2); ctx.stroke();
+        // 鬼：赤い二重の輪
+        ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 35, 0, Math.PI*2); ctx.stroke();
     } else if (p.team === 'red') {
-        // サッカー赤：太い赤の単線
+        // サッカー赤チーム：太い赤の輪
         ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 32, 0, Math.PI*2); ctx.stroke();
     } else if (p.team === 'blue') {
-        // サッカー青：太い青の単線
+        // サッカー青チーム：太い青の輪
         ctx.strokeStyle = "#1d9bf0"; ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 32, 0, Math.PI*2); ctx.stroke();
     }
+
+    // --- 3. 名前と状態（氷など）の表示 ---
+    ctx.fillStyle = isOni ? "#ff4d4d" : (p.team === 'red' ? "#ff4d4d" : (p.team === 'blue' ? "#1d9bf0" : "white"));
+    ctx.font = "bold 16px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
 
     ctx.restore();
-
-    // 名前表示の色もチームに合わせる
-    ctx.fillStyle = isOni ? "#ff4d4d" : (p.team === 'red' ? "#ff4d4d" : (p.team === 'blue' ? "#1d9bf0" : "white"));
-    ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
 }
-
-ctx.restore();
-// サッカー専用の表示関数（新しく追加）
-function drawSoccerUI() {
-    if (myPos.x > 8000) { // サッカー場にいるときだけ表示
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // 画面固定
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(canvas.width / 2 - 150, 20, 300, 60);
-        ctx.fillStyle = "white";
-        ctx.font = "bold 20px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(`SCORE [ 赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青 ]`, canvas.width / 2, 45);
-        ctx.font = "16px sans-serif";
-        ctx.fillText(`残り時間: ${soccerData.timer}秒`, canvas.width / 2, 70);
-        ctx.restore();
-    }
 }
 
 // プレイヤー描画ループの中の「わっか」部分
