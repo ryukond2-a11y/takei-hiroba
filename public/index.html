@@ -848,7 +848,38 @@ for (let id in players) {
 }
 
 ctx.restore();
+// サッカー専用の表示関数（新しく追加）
+function drawSoccerUI() {
+    if (myPos.x > 8000) { // サッカー場にいるときだけ表示
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // 画面固定
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(canvas.width / 2 - 150, 20, 300, 60);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 20px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`SCORE [ 赤 ${soccerData.scores.red} - ${soccerData.scores.blue} 青 ]`, canvas.width / 2, 45);
+        ctx.font = "16px sans-serif";
+        ctx.fillText(`残り時間: ${soccerData.timer}秒`, canvas.width / 2, 70);
+        ctx.restore();
+    }
+}
 
+// プレイヤー描画ループの中の「わっか」部分
+if (gameStatus.oniPages.includes(id)) {
+    // 鬼のわっか（赤・二重）
+    ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 35, 0, Math.PI*2); ctx.stroke();
+} else if (p.team === 'red') {
+    // サッカー赤チーム（太い赤）
+    ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(x, y, 32, 0, Math.PI*2); ctx.stroke();
+} else if (p.team === 'blue') {
+    // サッカー青チーム（太い青）
+    ctx.strokeStyle = "#1d9bf0"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(x, y, 32, 0, Math.PI*2); ctx.stroke();
+}
 // 鬼ごっこボタンの表示
 document.getElementById("game-btn").style.display = (myPos.x > 5000 && myPos.x < 7000) ? "block" : "none";
 
