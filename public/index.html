@@ -184,7 +184,7 @@ TIME: <span id="timer-count" class="timer-val">0</span><br>
 <button id="chat-btn" class="game-btn" onclick="openChat()">チャット</button>
 
 <button id="game-btn" class="game-btn" style="background: #ff4d4d; display: none;" onclick="startGame()">鬼ごっこ開始！</button>
-
+<button id="soccer-btn" class="game-btn" style="background: #1d9bf0; right: 10px; display: none;" onclick="socket.emit('start_soccer')">サッカー開始！</button>
 <div id="joy-base"><div id="joy-stick"></div></div>
 
 
@@ -599,14 +599,16 @@ canMove = false;
 
 // 壁にぶつかっていない場合のみ、座標を更新
 
-if (canMove && nx > 30 && nx < 6500) {
-
-if ((nx < 1500 && ny > 0 && ny < 1500) || (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500)) {
-
-myPos.x = nx; myPos.y = ny;
-
-}
-
+// --- 修正箇所：nx < 6500 だったのを nx < 11000 に広げる ---
+if (canMove && nx > 30 && nx < 11000) {
+    // 【条件】広場エリア(0-1500) OR 鬼ごっこエリア(5000-6500) OR サッカーエリア(8000-10500)
+    if ((nx < 1500 && ny > 0 && ny < 1500) || 
+        (nx > 5000 && nx < 6500 && ny > 5000 && ny < 6500) ||
+        (nx > 8000 && nx < 10500 && ny > 8000 && ny < 9500)) { 
+        
+        myPos.x = nx; 
+        myPos.y = ny;
+    }
 }
 
 socket.emit("move", { x: myPos.x, y: myPos.y });
@@ -744,7 +746,31 @@ drawFloor(0, 0); drawFloor(5000, 5000);
 ctx.fillStyle = "#ff4d4d"; ctx.fillRect(1480, 700, 20, 100); // 行き
 
 ctx.fillStyle = "#4da6ff"; ctx.fillRect(5000, 5700, 20, 100); // 戻り
+// --- 【追加】第3のエリア：サッカー場を描画 ---
+// 1. 床を濃い緑にする
+ctx.fillStyle = "#1b5e20"; 
+ctx.fillRect(8000, 8000, 2000, 1200); 
 
+// 2. 白いラインを描く
+ctx.strokeStyle = "white";
+ctx.lineWidth = 5;
+ctx.strokeRect(8050, 8050, 1900, 1100); // 外枠
+ctx.beginPath();
+ctx.moveTo(9000, 8050); ctx.lineTo(9000, 9150); // センターライン
+ctx.stroke();
+ctx.beginPath();
+ctx.arc(9000, 8600, 100, 0, Math.PI*2); // センターサークル
+ctx.stroke();
+
+// 3. ゴールポストを描く
+ctx.fillStyle = "rgba(255, 0, 0, 0.4)"; 
+ctx.fillRect(8000, 8400, 50, 400); // 左ゴール（赤チーム）
+ctx.fillStyle = "rgba(0, 0, 255, 0.4)"; 
+ctx.fillRect(9950, 8400, 50, 400); // 右ゴール（青チーム）
+
+// 4. 帰還用ゲート（北側の壁に白線を引く）
+ctx.fillStyle = "yellow";
+ctx.fillRect(8900, 8005, 200, 15);
 // loop内の drawFloor(0, 0); のすぐ下あたりに追加
 
 if (myPos.x < 1500 && myPos.y < 1500) {
@@ -813,7 +839,14 @@ ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
 
 ctx.restore();
 
-document.getElementById("game-btn").style.display = (myPos.x > 5000) ? "block" : "none";
+// 鬼ごっこボタンの表示
+document.getElementById("game-btn").style.display = (myPos.x > 5000 && myPos.x < 7000) ? "block" : "none";
+
+// 【追加】サッカーボタンの表示（x > 8000 の時だけ出す）
+const soccerBtn = document.getElementById("soccer-btn");
+if (soccerBtn) {
+    soccerBtn.style.display = (myPos.x > 8000 && !soccerData.active) ? "block" : "none";
+}
 
 requestAnimationFrame(loop);
 
