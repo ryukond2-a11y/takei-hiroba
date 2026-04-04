@@ -510,23 +510,21 @@ window.addEventListener("touchend", () => { joyStick.style.transform = `translat
 
 
 function updateScoreBoard() {
-
-if (!gameStatus.isOnigokko) { document.getElementById("score-board").style.display = "none"; return; }
-
-document.getElementById("score-board").style.display = "block";
-
-document.getElementById("timer-count").innerText = gameStatus.timeLeft;
-
-const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
-
-document.getElementById("nige-total").innerText = total - oni;
-
-document.getElementById("frozen-total").innerText = frozen;
-
-document.getElementById("oni-total").innerText = oni;
-
+    const sb = document.getElementById("score-board");
+    // 鬼ごっこ中
+    if (gameStatus.isOnigokko) {
+        sb.style.display = "block";
+        sb.style.background = "rgba(255, 0, 0, 0.4)"; // 鬼ごっこは赤背景
+        document.getElementById("timer-count").innerText = gameStatus.timeLeft;
+        const total = Object.keys(players).length, oni = gameStatus.oniPages.length, frozen = gameStatus.frozenPages.length;
+        document.getElementById("nige-total").innerHTML = `生存: <span class="nige-count">${total - oni}</span>人`;
+        document.getElementById("oni-total").innerHTML = `鬼: <span class="oni-count">${oni}</span>人 (凍: ${frozen})`;
+    } 
+    // サッカー中（それ以外）
+    else {
+        sb.style.display = "none";
+    }
 }
-
 
 
 function loop() {
@@ -809,34 +807,44 @@ drawWalls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
 
 
+// loop内のプレイヤー描画ループの中
 for (let id in players) {
+    const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
+    const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
 
-const p = players[id], x = (id === socket.id) ? myPos.x : p.x, y = (id === socket.id) ? myPos.y : p.y;
+    ctx.save();
+    if (isF) ctx.globalAlpha = 0.5;
 
-const isOni = gameStatus.oniPages.includes(id), isF = gameStatus.frozenPages.includes(id);
+    // アバター描画
+    for (let i = 0; i < 64; i++) {
+        if (p.avatar[i] === "#555") continue;
+        ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
+        ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
+    }
 
-ctx.save();
+    // --- 枠の描き分け ---
+    if (isOni) {
+        // 鬼：赤い二重円（トゲトゲっぽく見える）
+        ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(x, y, 32, 0, Math.PI*2); ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(x, y, 38, 0, Math.PI*2); ctx.stroke();
+    } else if (p.team === 'red') {
+        // サッカー赤：太い赤の単線
+        ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+    } else if (p.team === 'blue') {
+        // サッカー青：太い青の単線
+        ctx.strokeStyle = "#1d9bf0"; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+    }
 
-if (isF) ctx.globalAlpha = 0.5;
+    ctx.restore();
 
-for (let i = 0; i < 64; i++) {
-
-if (p.avatar[i] === "#555") continue;
-
-ctx.fillStyle = isF ? "#ffffff" : p.avatar[i];
-
-ctx.fillRect(x - 20 + (i % 8) * 5, y - 20 + Math.floor(i / 8) * 5, 5, 5);
-
-}
-
-if (isOni) { ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke(); }
-
-ctx.restore();
-
-ctx.fillStyle = isOni ? "#ff4d4d" : "white"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
-
-ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
-
+    // 名前表示の色もチームに合わせる
+    ctx.fillStyle = isOni ? "#ff4d4d" : (p.team === 'red' ? "#ff4d4d" : (p.team === 'blue' ? "#1d9bf0" : "white"));
+    ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(p.name + (isF ? " (氷)" : ""), x, y - 35);
 }
 
 ctx.restore();
