@@ -206,10 +206,15 @@ socket.on('move', (data) => {
     // 全員に位置を同期
     socket.broadcast.emit('player_moved', players[socket.id]);
 });
+// 切断処理
     socket.on('disconnect', () => {
         delete players[socket.id];
         io.emit('update_all', players);
     });
 
+}); // ← 【重要】これを足す！これで io.on('connection', ...) が閉じられます
 
-http.listen(3000, () => { console.log('Server is running!'); });
+// サーバー起動
+http.listen(3000, () => { 
+    console.log('Server is running!'); 
+});
