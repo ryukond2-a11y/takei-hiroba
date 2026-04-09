@@ -65,28 +65,62 @@ app.use(requireAccess, express.static('public'));
 let gameTimer = null; 
 
 io.on('connection', (socket) => {
-    // 参加
+    // --- 【修正点3】joinイベントを整理し、チーム均等振分を実装 ---
     socket.on('join', (data) => {
+        let red = 0, blue = 0;
+        Object.values(players).forEach(p => {
+            if(p.team === 'red') red++;
+            else if(p.team === 'blue') blue++;
+        });
+        const team = (red <= blue) ? 'red' : 'blue';
+
         players[socket.id] = { 
             id: socket.id, name: data.name, avatar: data.avatar, 
-            x: data.x || 750, y: data.y || 750, 
-            team: null // サッカーチームは最初なし
+            x: data.x || 750, y: data.y || 750, team: team 
         };
+        socket.emit('assign_team', team);
         io.emit('update_all', players);
     });
 
-    // --- 鬼ごっこシステム（元通り） ---
+    socket.on('send_chat', async (msg) => {
+        if (!players[socket.id]) return;
+        const chatData = {
+            username: players[socket.id].name,
+            realname: null,
+            text: msg,
+            timestamp: Date.now()
+        };
+        try {
+            await fetch(FIREBASE_URL, {
+                method: 'POST',
+                body: JSON.stringify(chatData),
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (e) { console.error("Firebase Error:", e); }
+        io.emit('announce', `${chatData.username}: ${msg}`);
+    });
+
+    socket.on('kick_ball', (data) => {
+        if (!isSoccerActive) return;
+        ball.vx = data.vx;
+        ball.vy = data.vy;
+    });
+
+    socket.on('start_soccer', () => {
+        soccerScores = { red: 0, blue: 0 };
+        soccerTimer = 150;
+        isSoccerActive = true;
+        io.emit('announce', "サッカー開始！");
+    });
+
     socket.on("start_onigokko", () => {
         if (gameStatus.isOnigokko) return;
-        // 参加者チェック（x座標5000-7000のエリアにいる人）
-        const participants = Object.keys(players).filter(id => players[id].x > 5000 && players[id].x < 7000);
-        
-        // 【元に戻した】一人では開始できない制限
+        const participants = Object.keys(players).filter(id => players[id].x > 5000);
         if (participants.length < 2) {
-            socket.emit("announce", "鬼ごっこには2人以上の参加者が必要です！");
+            socket.emit("announce", "参加者が足りません");
             return;
         }
-
+        if (gameTimer) clearInterval(gameTimer);
         gameStatus.isOnigokko = true;
         gameStatus.frozenPages = [];
         gameStatus.timeLeft = 150;
@@ -94,70 +128,91 @@ io.on('connection', (socket) => {
         const shuffled = [...participants].sort(() => 0.5 - Math.random());
         gameStatus.oniPages = shuffled.slice(0, oniCount);
         io.emit("onigokko_update", gameStatus);
+        participants.forEach(id => io.to(id).emit("announce", "鬼ごっこ開始！"));
 
-        if (gameTimer) clearInterval(gameTimer);
         gameTimer = setInterval(() => {
             gameStatus.timeLeft--;
-            if (gameStatus.timeLeft <= 0) {
+            const currentParticipants = Object.keys(players).filter(id => players[id].x > 5000);
+            const nigeIds = currentParticipants.filter(id => !gameStatus.oniPages.includes(id));
+            const allFrozen = nigeIds.length > 0 && nigeIds.every(id => gameStatus.frozenPages.includes(id));
+
+            if (gameStatus.timeLeft <= 0 || allFrozen) {
                 clearInterval(gameTimer);
                 gameTimer = null;
+                let resultMsg = allFrozen ? "鬼の勝利！" : "逃げの勝利！";
+                currentParticipants.forEach(id => io.to(id).emit("announce", "終了！ " + resultMsg));
                 gameStatus.isOnigokko = false;
-                io.emit("announce", "鬼ごっこ終了！");
+                gameStatus.oniPages = [];
+                gameStatus.frozenPages = [];
+                io.emit("onigokko_update", gameStatus);
+            } else {
+                io.emit("onigokko_update", gameStatus);
             }
-            io.emit("onigokko_update", gameStatus);
         }, 1000);
     });
+// ボールを蹴るイベント
+socket.on('kick_ball', (data) => {
+    if (!isSoccerActive) return;
+    // 蹴った方向(vx, vy)をボールに加える
+    ball.vx = data.vx;
+    ball.vy = data.vy;
+});
+ socket.on('move', (data) => {
+    if (!players[socket.id]) return;
+    
+    // 凍結されているプレイヤーは動けない（鬼ごっこのルール）
+    if (gameStatus.frozenPages.includes(socket.id)) return;
 
-    // --- 移動とチーム割り振り ---
-    socket.on('move', (data) => {
-        if (!players[socket.id]) return;
-        // 鬼ごっこで凍結中は動けない
-        if (gameStatus.frozenPages.includes(socket.id)) return;
+    players[socket.id].x = data.x;
+    players[socket.id].y = data.y;
 
-        players[socket.id].x = data.x;
-        players[socket.id].y = data.y;
+    // --- 【追加】サッカーのチーム分けロジック ---
+    if (data.x > 7500) { // サッカー場エリアにいる場合
+        if (!players[socket.id].team) {
+            const pArray = Object.values(players).filter(p => p.x > 7500 && p.team);
+            const redC = pArray.filter(p => p.team === 'red').length;
+            const blueC = pArray.filter(p => p.team === 'blue').length;
+            players[socket.id].team = (redC <= blueC) ? 'red' : 'blue';
+            socket.emit('announce', `あなたは ${players[socket.id].team === 'red' ? '赤' : '青'} チーム！`);
+        }
+    } else {
+        players[socket.id].team = null; // エリア外なら解除
+    }
 
-        // 【修正】サッカーコート(x > 8000)に触れたときだけチーム割り振り
-        if (data.x > 8000) {
-            if (!players[socket.id].team) {
-                const inCourt = Object.values(players).filter(p => p.x > 8000 && p.team);
-                const redCount = inCourt.filter(p => p.team === 'red').length;
-                const blueCount = inCourt.filter(p => p.team === 'blue').length;
-                players[socket.id].team = (redCount <= blueCount) ? 'red' : 'blue';
-                socket.emit('announce', `${players[socket.id].team === 'red' ? '赤' : '青'}チームに入りました！`);
+    // --- 【既存】鬼ごっこの接触判定ロジック ---
+    if (gameStatus.isOnigokko && players[socket.id].x > 5000) {
+        const myId = socket.id;
+        for (let targetId in players) {
+            // 自分自身、または鬼ごっこエリア(x > 5000)外の人は無視
+            if (myId === targetId || players[targetId].x <= 5000) continue;
+
+            const dx = players[myId].x - players[targetId].x;
+            const dy = players[myId].y - players[targetId].y;
+
+            if (Math.sqrt(dx*dx + dy*dy) < 40) { // 接触した
+                const isIMoni = gameStatus.oniPages.includes(myId);
+                const isTargetFrozen = gameStatus.frozenPages.includes(targetId);
+
+                // 自分が鬼で、相手が逃げ（かつ凍っていない）なら凍らせる
+                if (isIMoni && !gameStatus.oniPages.includes(targetId) && !isTargetFrozen) {
+                    gameStatus.frozenPages.push(targetId);
+                } 
+                // 自分が鬼でなく、相手が凍っているなら助ける
+                else if (!isIMoni && !gameStatus.oniPages.includes(targetId) && isTargetFrozen) {
+                    gameStatus.frozenPages = gameStatus.frozenPages.filter(id => id !== targetId);
+                }
+                io.emit("onigokko_update", gameStatus);
             }
-        } else {
-            // コートを出たらチーム解除
-            players[socket.id].team = null;
         }
+    }
 
-        // 鬼ごっこの接触判定（ここも元通りのロジック）
-        if (gameStatus.isOnigokko && data.x > 5000 && data.x < 7000) {
-            // ...既存の接触判定コード（そのまま維持）
-        }
-
-        socket.broadcast.emit('player_moved', players[socket.id]);
-    });
-
-    // サッカー開始（独立）
-    socket.on('start_soccer', () => {
-        soccerScores = { red: 0, blue: 0 };
-        soccerTimer = 150;
-        isSoccerActive = true;
-        io.emit('announce', "サッカー試合開始！");
-    });
-
-    socket.on('kick_ball', (data) => {
-        if (!isSoccerActive) return;
-        ball.vx = data.vx; ball.vy = data.vy;
-    });
-
+    // 全員に位置を同期
+    socket.broadcast.emit('player_moved', players[socket.id]);
+});
     socket.on('disconnect', () => {
         delete players[socket.id];
         io.emit('update_all', players);
     });
 });
-// サーバー起動
-http.listen(3000, () => { 
-    console.log('Server is running!'); 
-});
+
+http.listen(3000, () => { console.log('Server is running!'); });
